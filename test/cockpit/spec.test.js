@@ -89,6 +89,10 @@ test('a decision on two spec rows splits their ids on whitespace [B26,N26]', asy
     boardPath: () => '/moves', api: async (path, body) => { moves.push(body); return { result: {} }; },
     moveMessage: () => 'recorded', refresh: async () => {},
   };
+  // decideRow refuses a row already on its way, so it reads the production processingRows against an empty board.
+  const busyStart = served.indexOf('function processingRows(');
+  context.data = { project: { spec: [], practice: [], personRequests: [] } };
+  vm.runInNewContext(served.slice(busyStart, served.indexOf('\n}\n', busyStart) + 3) + 'this.processingRows = processingRows;', context);
   const decideRow = vm.runInNewContext(`(${served.slice(start, end)})`, context);
   const anchor = { closest: () => null };
   assert.equal(await decideRow('spec', 'spec-approve', { ids: 'G1 G2' }, anchor), true);
@@ -452,7 +456,7 @@ test('spec rows read as a list, decided in the panel [N26]', { timeout: 300_000 
           const picked = r.rows.find((row) => row.on);
           assert.ok(picked && neutral(picked.tint) && picked.edges, `${tab}: the picked row is a quiet neutral tint with no coloured edge: ${JSON.stringify(picked)}`);
           // On Spec, Approve all stays on the section's header.
-          if (kind === 'spec') assert.deepEqual(r.section.map((b) => [b.word, b.head, b.height >= tapTarget(width)]), [[`Approve all ${undecidedNow.length} in this section`, true, true]], `${tab}: Approve all stays on the section header`);
+          if (kind === 'spec') assert.deepEqual(r.section.map((b) => [b.word, b.head, b.height >= tapTarget(width)]), [[`Approve all ${undecidedNow.filter(([, chip]) => chip !== 'Processing…').length} in this section`, true, true]], `${tab}: Approve all stays on the section header, counting only rows not yet decided`);
           else assert.deepEqual(r.section, [], `${tab}: Doctrine rules are decided one at a time`);
 
           // With focus in the list the arrows move the pick, A approves and moves on, and D asks why, then records it.
@@ -490,9 +494,9 @@ test('spec rows read as a list, decided in the panel [N26]', { timeout: 300_000 
           // The last layout decides the last two drafts, so only the earlier ones have a row after them to stay untouched.
           if (third) assert.deepEqual(await recorded(kind, third), { stage: 'draft', decided: null }, `${tab}: and nothing else`);
           assert.equal(await chrome.stable(`document.activeElement === document.querySelector('#${kind}-list')`), true, `${tab}: the dialog returns to the list`);
-          // The two decided rows leave Needs your decision.
-          expected[kind].decide = undecidedNow.filter(([id]) => id !== first && id !== second);
-          await chrome.waitFor(`![...document.querySelectorAll('#${kind}-list .srow')].some((row) => ['${kind}:${first}', '${kind}:${second}'].includes(row.dataset.row))`, 15_000); // budget: hang ceiling for decided rows to leave Needs; no throughput claim.
+          // The two decided rows stay under Needs your decision as processing until spec apply moves them.
+          expected[kind].decide = undecidedNow.map(([id, chip]) => [id, id === first || id === second ? 'Processing…' : chip]);
+          await chrome.waitFor(`[...document.querySelectorAll('#${kind}-list .srow')].filter((row) => ['${kind}:${first}', '${kind}:${second}'].includes(row.dataset.row) && row.querySelector('.chip.processing')).length === 2`, 15_000); // budget: hang ceiling for decided rows to read as processing; no throughput claim.
 
           // Under All rows, every row not approved says what it is.
           await filter(kind, 'all');
@@ -612,7 +616,7 @@ test('real Chrome records Spec row decisions from the row, detail and confirmed 
       })()`), '1280: the approved pending stage does not cover row text');
 
       await chrome.click("document.querySelector('#spec-chips [data-rows=\"spec:decide\"]')");
-      assert.equal(await chrome.stable("!!document.querySelector('#spec-list [data-row=\"spec:G1\"]')"), false, `${width}: approval immediately leaves Needs your decision`);
+      assert.deepEqual(JSON.parse(await chrome.stable("JSON.stringify((() => { const row = document.querySelector('#spec-list [data-row=\"spec:G1\"]'); return row && [row.getAttribute('aria-busy'), row.querySelector('.chip.processing')?.textContent]; })())")), ['true', 'Processing…'], `${width}: approval keeps G1 under Needs your decision as processing until spec apply`);
       await chrome.click("document.querySelector('#spec-chips [data-rows=\"spec:all\"]')");
 
       await diagnosticClick(chrome, '#spec-detail [data-row-decision="decline"]', width, 'detail decline before cancel');
@@ -684,7 +688,9 @@ test('real Chrome records Spec row decisions from the row, detail and confirmed 
         return chip.right <= text.left || chip.bottom <= text.top || chip.top >= text.bottom;
       })`), '1280: every pending decision stage has room beside its row text');
       await chrome.click("document.querySelector('#spec-chips [data-rows=\"spec:decide\"]')");
-      await chrome.waitFor("document.querySelector('#spec-list [data-row=\"spec:G3\"]') && !document.querySelector('#spec-list [data-row=\"spec:G1\"]') && !document.querySelector('#spec-list [data-row=\"spec:G2\"]') && !document.querySelector('#spec-list [data-row=\"spec:K1\"]') && !document.querySelector('#spec-list [data-row=\"spec:K2\"]')");
+      // The four decided rows stay under Needs your decision as processing until spec apply; G3 is still to decide.
+      await chrome.waitFor("!document.querySelector('#spec-list [data-row=\"spec:G3\"]').hasAttribute('aria-busy') && ['G1','G2','K1','K2'].every(id => document.querySelector('#spec-list [data-row=\"spec:' + id + '\"]')?.getAttribute('aria-busy') === 'true')");
+      assert.ok(await chrome.stable("document.querySelector('#spec-chips [data-rows=\"spec:decide\"] .processing-count')?.textContent === '4 processing…'"), `${width}: Needs your decision names the four processing rows`);
       assert.ok(await chrome.stable("document.querySelector('#spec-chips [data-rows=\"spec:decide\"]').innerText.includes('27')"), `${width}: Needs your decision excludes all four decided rows`);
       assert.equal(await chrome.stable('window.__confirmCalls'), 0, `${width}: Approve all never asks the browser's confirm dialog`);
       assert.deepEqual(chrome.exceptions, [], `${width}: Chrome reports no uncaught exceptions`);

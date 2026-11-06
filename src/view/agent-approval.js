@@ -8,9 +8,10 @@ export function agentApprovalScript() {
 function agentApprovalActions(row, detail = false) {
   const person = !snapshot && (!readOnly || requests);
   const allowed = verb => person && Array.isArray(row.actions) && row.actions.some(action => action.verb === verb && action.args?.ids === row.id);
-  const button = (decision, label) => '<button class="' + (decision === 'approve' ? 'approve-row' : 'decline-row') + '" type="button" data-row-kind="spec" data-row-id="' + esc(row.id) + '" data-row-decision="' + decision + '">' + label + '</button>';
+  const locked = processingRows('spec').has(row.id);
+  const button = (decision, label) => '<button class="' + (decision === 'approve' ? 'approve-row' : 'decline-row') + '" type="button" data-row-kind="spec" data-row-id="' + esc(row.id) + '" data-row-decision="' + decision + '"' + (locked ? ' disabled aria-disabled="true"' : '') + '>' + (locked && decision === 'approve' ? 'Processing…' : label) + '</button>';
   const controls = (allowed('spec-approve') ? button('approve', 'Confirm') : '') + (allowed('spec-decline') ? button('decline', 'Decline') : '');
-  return controls ? '<div class="spec-decision-actions actions' + (detail ? ' detail-decision-actions' : '') + '">' + controls + '</div>' : '';
+  return controls ? '<div class="spec-decision-actions actions' + (detail ? ' detail-decision-actions' : '') + '"' + (locked ? ' aria-busy="true"' : '') + '>' + controls + '</div>' : '';
 }
 /** Show Git provenance plainly without treating a Git author as a confirmed person. */
 function agentApprovalAttribution(approval) {

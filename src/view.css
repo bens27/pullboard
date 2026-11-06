@@ -410,6 +410,7 @@ input:disabled { background: var(--surface-2); color: var(--ink-muted); }
 .seg button:hover { color: var(--ink); }
 .seg button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(18, 26, 23, .08); }
 .seg button b { font: 600 11px var(--mono); color: var(--ink-faint); margin-left: 5px; }
+.seg button .processing-count { margin-left: 6px; color: var(--warn); font-weight: 600; }
 
 .chain { list-style: none; margin: 0; padding: 6px; display: grid; gap: 2px; }
 .row { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 9px; border-radius: 10px; border: 1px solid transparent; cursor: pointer; }
@@ -669,6 +670,9 @@ code.inline.long { white-space: break-spaces; overflow-wrap: anywhere; }
 .spec-section-approve, .approve-row, .decline-row { min-height: var(--tap); padding: 0 10px; border: 1px solid transparent; border-radius: 8px; background: none; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .spec-section-approve { border: 0; color: var(--accent-strong); }
 .spec-section-approve:hover { background: var(--accent-soft); }
+/* A decision on its way to SPEC.md: the control says so and takes no second press until spec apply lands. */
+.seg button:disabled, .spec-section-approve:disabled, .approve-row:disabled, .decline-row:disabled, .spec-revision button:disabled { opacity: .6; cursor: progress; }
+.chip.processing { color: var(--ink-muted); font-style: italic; }
 .approve-row { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .approve-row:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
 .decline-row { border-color: var(--line-strong); color: var(--ink-muted); }

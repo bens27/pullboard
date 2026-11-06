@@ -491,6 +491,32 @@ function specFeedback(feedback) {
   return '<div class="spec-feedback ' + feedback.tone + '" role="status">' + esc(feedback.text) + '</div>';
 }
 
+/**
+ * The rows whose decision is on its way to SPEC.md: sent from this page, waiting as a phone's request, or recorded and
+ * waiting on spec apply. The board holds the last two, so a reload or another device shows the same wait, and it ends
+ * when the apply lands or the request is refused.
+ */
+function processingRows(kind, project = data.project) {
+  const prefix = kind === 'doctrine' ? 'doctrine:' : '';
+  /** The rows of this kind a phone request decides: approve and decline name ids, joined by spaces or commas; an answer names its row. */
+  const named = (request) => {
+    const args = request.move?.args || {};
+    const ids = request.move?.verb === 'spec-answer' ? [String(args.row || '')] : ['spec-approve', 'spec-decline'].includes(request.move?.verb) ? String(args.ids || '').split(/[\\s,]+/) : [];
+    return ids.filter((id) => id && (prefix ? id.startsWith(prefix) : !id.includes(':'))).map((id) => id.slice(prefix.length));
+  };
+  const requests = (project?.personRequests || []).filter((request) => named(request).length);
+  // A decision the coordinator refused stays unapplied on the board; its newest request says the wait is over.
+  const refused = (row) => {
+    const latest = requests.filter((request) => named(request).includes(row.id)).sort((a, b) => b.sequence - a.sequence)[0];
+    return latest?.status === 'refused' && (Object.hasOwn(latest, 'resultSequence') || Date.parse(latest.at) > Date.parse(row.decision.at));
+  };
+  const ids = new Set(((kind === 'spec' ? project?.spec : project?.practice) || []).filter((row) => row.decision && !refused(row)).map((row) => row.id));
+  for (const request of requests) if (request.status === 'waiting') for (const id of named(request)) ids.add(id);
+  const sending = view.specFeedback;
+  if (sending?.sending && sending.kind === kind && sending.root === view.root) for (const id of sending.ids) ids.add(id);
+  return ids;
+}
+
 /** Ask why a Spec row or Doctrine rule is declined; the reason, once given, is recorded where it was asked. */
 function askDecline(kind, id, from, digest = '', anchor = null) {
   view.declining = id;
@@ -525,7 +551,7 @@ function closeDecline(left = false) {
  * dialog can be dismissed or never shown, and then the press recorded nothing and said nothing; this one is the page's.
  */
 function askApproveAll(section) {
-  const ids = data.project.spec.filter((row) => row.section === section && ['pending', 'draft'].includes(row.status) && !row.decision).map((row) => row.id);
+  const ids = data.project.spec.filter((row) => row.section === section && ['pending', 'draft'].includes(row.status) && !processingRows('spec').has(row.id)).map((row) => row.id);
   // Every row was decided after the last redraw; this one drops the stale control.
   if (!ids.length) { render(); return; }
   // The confirmation belongs to the board it was opened on: its rows are that board's, and only that board records them.
@@ -596,11 +622,13 @@ async function decideRow(kind, command, args, anchor) {
   const requestMode = requests;
   const root = view.root, scroll = window.scrollY;
   const ids = String(args.ids).split(/\\s+/);
+  // A second press, or a key, before the first decision lands would record it twice.
+  if (ids.some((id) => processingRows(kind).has(id))) return false;
   const prefix = kind + ':';
   const rows = [...$(kind + '-list').querySelectorAll('[data-row]')];
   const index = rows.findIndex((row) => row.dataset.row === prefix + ids[0]);
   const next = rows.slice(index + 1).find((row) => !ids.includes(row.dataset.row.slice(prefix.length)))?.dataset.row.slice(prefix.length);
-  const feedback = { kind, root, id: ids[0], next, from: anchor?.closest('#' + kind + '-detail') ? 'detail' : 'list', tone: '', text: 'Recording decision…' };
+  const feedback = { kind, root, id: ids[0], next, from: anchor?.closest('#' + kind + '-detail') ? 'detail' : 'list', tone: '', text: 'Recording decision…', ids, sending: true };
   view.specFeedback = feedback;
   render();
   // A waiting request keeps its row; let browser anchoring follow growth above it.
@@ -621,6 +649,8 @@ async function decideRow(kind, command, args, anchor) {
     feedback.tone = 'no';
     feedback.text = String(error.message || error);
   }
+  // From here the board says whether the row still waits: recorded, it carries its decision until applied.
+  feedback.sending = false;
   if (root === view.root && view.specFeedback === feedback) {
     render();
     if (!requestMode) window.scrollTo({ top: scroll, behavior: 'instant' });
@@ -854,6 +884,7 @@ document.addEventListener('click', (event) => {
   }
   else if (t.dataset.rowDecision) {
     const id = t.dataset.rowId, kind = t.dataset.rowKind;
+    if (t.disabled || processingRows(kind).has(id)) return;
     if (t.dataset.rowDecision === 'approve') decideRow(kind, 'spec-approve', { ids: id }, t);
     else askDecline(kind, id, t.closest('#' + kind + '-detail') ? 'detail' : 'list');
   }
@@ -915,7 +946,7 @@ for (const kind of ['spec', 'doctrine']) $(kind + '-list').addEventListener('key
   } else if (event.key === 'Enter' && view.row[kind]) {
     event.preventDefault();
     $(kind + '-detail').scrollIntoView({ block: 'start', behavior: 'instant' });
-  } else if ((event.key === 'a' || event.key === 'd') && view.row[kind] && $(kind + '-detail').querySelector('.approve-row')) {
+  } else if ((event.key === 'a' || event.key === 'd') && view.row[kind] && $(kind + '-detail').querySelector('.approve-row:not([disabled])')) {
     // Only a row still waiting on the person has a decision to make; the detail shows it.
     event.preventDefault();
     if (event.key === 'a') decideRow(kind, 'spec-approve', { ids: view.row[kind] }, event.currentTarget);
