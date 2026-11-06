@@ -186,10 +186,11 @@ test("the page's Needs-you comes from the shared builder [N26]", { timeout: 180_
     for (const [mode, address] of [['export', snapshotHost.base + '/snapshot/'], ['relay page', 'http://127.0.0.1:' + relayServer.address().port + '/']]) {
       const profile = mkdtempSync(join(tmpdir(), 'pullboard-shared-needs-')); profiles.push(profile);
       chrome = await openSnapshotChrome(executable, address, profile);
-      await chrome.waitFor("data?.project?.needs?.length === 4 && document.querySelectorAll('#needs > .row').length === 4");
+      // The four shared calls, then G5, approved and waiting on spec apply, as one processing row that opens nothing.
+      await chrome.waitFor("data?.project?.needs?.length === 4 && document.querySelectorAll('#needs > .row').length === 5");
       assert.deepEqual(JSON.parse(await chrome.stable('JSON.stringify(projectNeeds(data.project))')), expected, mode + ' computes identical entries');
       assert.deepEqual(JSON.parse(await chrome.stable('JSON.stringify([...document.querySelectorAll("#needs > .row .t")].map(row => row.textContent))')),
-        ['Ship the greeting?', 'G3Choose the greeting.', 'webWait for the greeting decision', '1draft spec rows to approve or drop'], mode + ' renders the same calls');
+        ['Ship the greeting?', 'G3Choose the greeting.', 'webWait for the greeting decision', '1draft spec rows to approve or drop', '1spec row processing, waiting on spec apply'], mode + ' renders the same calls, then the decided row as processing');
       assert.deepEqual(chrome.exceptions, [], mode + ' has no uncaught exception');
       await closeSnapshotChrome(chrome); chrome = null;
     }

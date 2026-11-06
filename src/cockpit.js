@@ -1138,7 +1138,11 @@ function render() {
   // Each of the person's calls is a row at the head of Active, shaped like an item: what it is first, then NEEDS YOU and
   // its kind where an item has its lane, and what to do at the right. Every call is a row; the draft rows are one row
   // with their count. Read-only, a row is its words, opening nothing.
-  $('needs').hidden = (!needs.length && !drafts && !rigorDrafts.length && !sentinelDrafts.length && !agentApprovals.length) || view.state !== 'active' || Boolean(view.lane);
+  // Needs you drops a row once its decision is recorded; until spec apply lands it stays here as processing, opening nothing.
+  const processingSpec = processingRows('spec');
+  const waitingQuestions = p.spec.filter((r) => r.status === 'pending' && processingSpec.has(r.id));
+  const waitingDrafts = p.spec.filter((r) => r.status === 'draft' && processingSpec.has(r.id)).length;
+  $('needs').hidden = (!needs.length && !drafts && !rigorDrafts.length && !sentinelDrafts.length && !agentApprovals.length && !waitingQuestions.length && !waitingDrafts) || view.state !== 'active' || Boolean(view.lane);
   const needRow = ([target, ref, text, what, at], kind, action) => '<li class="row ask"' + (readOnly || !target ? '' : ' data-go="' + esc(target) + '"') + '><span class="dot ask"></span><div><div class="t">' + (ref ? '<span>' + esc(ref) + '</span>' : '') + rich(text, titles, !readOnly) + '</div>'
     + (at ? '<span class="row-age">' + age(at) + '</span>' : '') + '<div class="meta"><span class="why"><b>NEEDS YOU</b> ' + esc(kind) + '</span></div></div><span class="chip warn">' + esc(action) + '</span></li>';
   const needKind = (${renderNeedsRow.toString()}).bind(null, needRow, specRevisionRow);
@@ -1149,7 +1153,9 @@ function render() {
     row.unproved && !row.materialized ? 'prepare review' : 'Approve or Decline')).join('')
     + sentinelDrafts.map(row => sentinelDraftRow(row)).join('')
     + agentApprovals.map(row => agentApprovalRow(row)).join('')
-    + (drafts ? needRow(['tab:spec', String(drafts), 'draft spec rows to approve or drop'], 'Spec rows waiting on you', 'review') : '');
+    + (drafts ? needRow(['tab:spec', String(drafts), 'draft spec rows to approve or drop'], 'Spec rows waiting on you', 'review') : '')
+    + waitingQuestions.map((r) => needRow([null, r.id, r.text], 'an open question in SPEC.md, answered; waiting on spec apply', 'Processing…').replace('<li class="row ask"', '<li class="row ask" aria-busy="true"')).join('')
+    + (waitingDrafts ? needRow([null, String(waitingDrafts), (waitingDrafts === 1 ? 'spec row' : 'spec rows') + ' processing, waiting on spec apply'], 'Spec rows you decided', 'Processing…').replace('<li class="row ask"', '<li class="row ask" aria-busy="true"') : '');
   $('needs').innerHTML = needsHtml;
   // Home reads the rules first, then the same calls (#967).
   $('home-rules').innerHTML = homeRules(p.spec);
@@ -1426,19 +1432,29 @@ function render() {
     const defaults = kind === 'doctrine' ? rows.filter((r) => r.origin === 'standard') : [];
     const labels = { decide: 'Needs your decision', ...(defaults.length ? { defaults: 'Defaults to review' } : {}), all: 'All rows', approved: 'Approved' };
     /** Inherited defaults are reviewed in the repo's doctrine; only local proposals ask for a decision. */
-    const undecided = (r) => (['pending', 'draft'].includes(r.status) && !r.decision || !!r.staleDecision || kind === 'spec' && agentApprovals.some(approval => approval.id === r.id)) && !(kind === 'doctrine' && r.origin === 'standard');
+    // A decision on its way stays under Needs your decision, locked, until spec apply moves its row; otherwise the press
+    // seems to have done nothing, or the row vanishes before SPEC.md says so.
+    const processing = processingRows(kind);
+    const busy = (r) => processing.has(r.id) && !(kind === 'doctrine' && r.origin === 'standard');
+    const undecided = (r) => !busy(r) && (['pending', 'draft'].includes(r.status) && !r.decision || !!r.staleDecision || kind === 'spec' && agentApprovals.some(approval => approval.id === r.id)) && !(kind === 'doctrine' && r.origin === 'standard');
     const n = { decide: rows.filter(undecided).length, defaults: defaults.length, all: rows.length, approved: rows.filter((r) => r.status === 'approved').length };
-    $(kind + '-chips').innerHTML = Object.keys(labels).map((f) => '<button data-rows="' + kind + ':' + f + '" class="' + (filter === f ? 'on' : '') + '" type="button">' + labels[f] + '<b>' + n[f] + '</b></button>').join('');
-    const shownRows = rows.filter((r) => filter === 'all' || (filter === 'decide' ? undecided(r) : filter === 'defaults' ? r.origin === 'standard' : r.status === 'approved'));
+    const waiting = rows.filter(busy).length;
+    // With every row it lists on its way, Needs your decision has nothing to offer a press until the apply lands.
+    const chipLock = (f) => f === 'decide' && waiting ? ' aria-busy="true"' + (n.decide ? '' : ' disabled aria-disabled="true"') : '';
+    $(kind + '-chips').innerHTML = Object.keys(labels).map((f) => '<button data-rows="' + kind + ':' + f + '" class="' + (filter === f ? 'on' : '') + '" type="button"' + chipLock(f) + '>' + labels[f] + '<b>' + n[f] + '</b>' + (f === 'decide' && waiting ? '<span class="processing-count">' + waiting + ' processing…</span>' : '') + '</button>').join('');
+    const shownRows = rows.filter((r) => filter === 'all' || (filter === 'decide' ? undecided(r) || busy(r) : filter === 'defaults' ? r.origin === 'standard' : r.status === 'approved'));
     // With no row picked, or the pick filtered out, the detail opens on the first row shown, as Items does.
     if (!(view.tab === kind && view.addressDetail !== null) && !shownRows.some((r) => r.id === view.row[kind])) view.row[kind] = shownRows[0]?.id ?? null;
     const feedback = view.specFeedback?.kind === kind && view.specFeedback.root === view.root && view.specFeedback.from === 'list' ? view.specFeedback : null;
     const feedbackId = feedback && (shownRows.some((r) => r.id === feedback.id) ? feedback.id : shownRows.some((r) => r.id === feedback.next) ? feedback.next : shownRows[0]?.id);
     let section = null;
     $(kind + '-list').innerHTML = shownRows.length ? shownRows.map((r) => {
-      const sectionRows = !snapshot && (!readOnly || requests) && kind === 'spec' && r.section !== section ? rows.filter((entry) => entry.section === r.section && undecided(entry)) : [];
+      const decides = !snapshot && (!readOnly || requests) && kind === 'spec' && r.section !== section;
+      const sectionRows = decides ? rows.filter((entry) => entry.section === r.section && undecided(entry)) : [];
+      const sectionBusy = decides && !sectionRows.length ? rows.filter((entry) => entry.section === r.section && busy(entry)).length : 0;
       const sectionCount = shownRows.filter((entry) => entry.section === r.section).length;
-      const head = r.section !== section ? '<div class="spec-section-head"><h4>' + esc(r.section) + ' <span class="section-count">' + sectionCount + '</span></h4>' + (sectionRows.length ? '<button class="spec-section-approve" data-section-approve="' + esc(r.section) + '" type="button">Approve all ' + sectionRows.length + ' in this section</button>' : '') + '</div>' : '';
+      const head = r.section !== section ? '<div class="spec-section-head"><h4>' + esc(r.section) + ' <span class="section-count">' + sectionCount + '</span></h4>' + (sectionRows.length ? '<button class="spec-section-approve" data-section-approve="' + esc(r.section) + '" type="button">Approve all ' + sectionRows.length + ' in this section</button>'
+        : sectionBusy ? '<button class="spec-section-approve" data-section-approve="' + esc(r.section) + '" type="button" disabled aria-disabled="true" aria-busy="true">Processing ' + sectionBusy + '…</button>' : '') + '</div>' : '';
       section = r.section;
       const declined = kind === 'doctrine' && r.status === 'wont';
       const text = declined ? '<s>' + linked(r.standardText || r.text, titles) + '</s>' : linked(r.text, titles);
@@ -1446,9 +1462,10 @@ function render() {
       const reason = (declined || kind === 'spec' && r.status === 'wont') && r.reason ? '<span class="rule-reason" title="' + esc(r.reason) + '">Reason: ' + linked(r.reason, titles) + '</span>' : '';
       const secondary = '<span class="rule-source" title="' + esc(source) + '">' + esc(source) + '</span>' + reason + (r.gate ? '<span class="gate" title="' + esc(r.gate) + '">' + esc(r.gate) + '</span>' : '');
       const statusShown = filter === 'all' || !!r.staleDecision || (filter === 'decide' && r.status !== 'draft');
-      const badge = statusShown ? '<span class="chip ' + tone(r.status) + '">' + esc(r.stage || r.status) + '</span>' : r.tier ? '<span class="chip">' + esc(r.tier) + '</span>' : '';
+      const badge = busy(r) && (filter === 'decide' || !r.stage) ? '<span class="chip processing" title="' + esc(r.stage || 'Recording decision') + '">Processing…</span>'
+        : statusShown ? '<span class="chip ' + tone(r.status) + '">' + esc(r.stage || r.status) + '</span>' : r.tier ? '<span class="chip">' + esc(r.tier) + '</span>' : '';
       const citations = p.items.filter((item) => item.specs.includes(r.id)).length;
-      return head + (feedback && feedbackId === r.id ? specFeedback(feedback) : '') + recordRow({ tag: 'div', classes: view.row[kind] === r.id ? 'on' : '', attributes: 'data-row="' + kind + ':' + esc(r.id) + '"', title: r.text,
+      return head + (feedback && feedbackId === r.id ? specFeedback(feedback) : '') + recordRow({ tag: 'div', classes: view.row[kind] === r.id ? 'on' : '', attributes: 'data-row="' + kind + ':' + esc(r.id) + '"' + (busy(r) ? ' aria-busy="true"' : ''), title: r.text,
         state: r.status === 'approved' ? 'verified' : r.status === 'wont' ? 'back' : 'open', primary: '<span class="row-id">' + esc(r.id) + '</span>' + text,
         secondary, rightTop: citations ? count(citations, 'item', 'items') : '', rightBottom: badge });
     }).join('') : '<div class="empty">' + (rows.length ? 'No rows match.' : kind === 'spec' ? 'No spec rows yet. Each requirement is one row in SPEC.md, such as G1 [draft, must] and a line; write them, or ask an agent to, and they show up here.' : 'No doctrine rows yet: they live in DOCTRINE.md.') + '</div>';
@@ -1463,8 +1480,10 @@ function render() {
     const home = kind === 'doctrine' && row && row.origin === 'standard' ? 'Standard rules come with Pullboard as defaults to review; override or decline one in DOCTRINE.md.' : '';
     const rowStatus = row?.stage || row?.status;
     const agentApproval = kind === 'spec' && row ? agentApprovals.find(approval => approval.id === row.id) : null;
-    const rowDecisionActions = agentApproval ? agentApprovalActions(agentApproval, true) : !snapshot && (!readOnly || requests) && row && undecided(row) && (kind === 'spec' || row.origin !== 'standard')
-      ? '<div class="spec-decision-actions detail-decision-actions"><button class="approve-row" data-row-decision="approve" data-row-kind="' + kind + '" data-row-id="' + esc(row.id) + '" title="Approve (A, from the list)" type="button">Approve <kbd>A</kbd></button><button class="decline-row" data-row-decision="decline" data-row-kind="' + kind + '" data-row-id="' + esc(row.id) + '" title="Decline (D, from the list)" type="button">Decline <kbd>D</kbd></button></div>'
+    const locked = row && busy(row);
+    const lock = locked ? ' disabled aria-disabled="true"' : '';
+    const rowDecisionActions = agentApproval ? agentApprovalActions(agentApproval, true) : !snapshot && (!readOnly || requests) && row && (undecided(row) || locked) && (kind === 'spec' || row.origin !== 'standard')
+      ? '<div class="spec-decision-actions detail-decision-actions"' + (locked ? ' aria-busy="true"' : '') + '><button class="approve-row" data-row-decision="approve" data-row-kind="' + kind + '" data-row-id="' + esc(row.id) + '" title="' + (locked ? 'Processing: waiting on spec apply' : 'Approve (A, from the list)') + '" type="button"' + lock + '>' + (locked ? 'Processing…' : 'Approve <kbd>A</kbd>') + '</button><button class="decline-row" data-row-decision="decline" data-row-kind="' + kind + '" data-row-id="' + esc(row.id) + '" title="Decline (D, from the list)" type="button"' + lock + '>Decline' + (locked ? '' : ' <kbd>D</kbd>') + '</button></div>'
       : '';
     $(kind + '-detail').innerHTML = row ? '<div class="stack tight"><h2><span>' + esc(row.id) + '</span>' + text + '</h2><div class="meta"><span class="chip ' + tone(row.status) + '">' + esc(rowStatus) + '</span>' + (row.tier ? '<span class="chip">' + esc(row.tier) + '</span>' : '') + source + '</div>' + rowDecisionActions + (kind === 'spec' && view.specFeedback?.kind === kind && view.specFeedback.root === view.root && view.specFeedback.from === 'detail' && view.specFeedback.id === row.id ? specFeedback(view.specFeedback) : '') + '<dl class="kv"><dt>section</dt><dd>' + esc(row.section) + '</dd>' + reason + (row.gate ? '<dt>gate</dt><dd>' + esc(row.gate) + '</dd>' : '') + (row.serves && row.serves.length ? '<dt>serves</dt><dd>' + esc(row.serves.join(', ')) + '</dd>' : '') + '</dl><div><h3>Items that cite it</h3>' + (citing.length ? '<div class="links">' + citing.map((i) => '<div class="links-item" data-item="' + i.id + '"><span>#' + i.id + ' ' + rich(i.title, titles) + '</span></div>').join('') + '</div>' : '<div class="muted">None yet.</div>') + '</div>' + (home ? '<div class="muted">' + home + '</div>' : '') + '</div>' : '<div class="empty">' + (view.tab === kind && view.addressDetail !== null ? 'No ' + (kind === 'spec' ? 'Spec' : 'Doctrine') + ' row ' + esc(view.addressDetail) + ' exists here.' : 'Pick a row to see it, and the items that cite it.') + '</div>';
   }

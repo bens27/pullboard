@@ -5,7 +5,8 @@ export function specRevisionScript() {
 function specRevisionRow(row) {
   const person = !snapshot && (!readOnly || requests);
   const allowed = verb => person && Array.isArray(row.actions) && row.actions.some(action => action.verb === verb && action.args?.ids === row.id);
-  const button = (decision, label) => '<button type="button" data-row-kind="spec" data-row-id="' + esc(row.id) + '" data-row-decision="' + decision + '">' + label + '</button>';
+  const locked = processingRows('spec').has(row.id);
+  const button = (decision, label) => '<button type="button" data-row-kind="spec" data-row-id="' + esc(row.id) + '" data-row-decision="' + decision + '"' + (locked ? ' disabled aria-disabled="true"' : '') + '>' + (locked && decision === 'approve' ? 'Processing…' : label) + '</button>';
   const controls = (allowed('spec-approve') ? button('approve', 'Approve') : '') + (allowed('spec-decline') ? button('decline', 'Decline') : '');
   const feedback = view.specFeedback?.root === view.root && view.specFeedback.kind === 'spec' && view.specFeedback.id === row.id ? view.specFeedback : null;
   return '<li class="row ask spec-revision" data-spec-revision="' + esc(row.id) + '"><div>'
