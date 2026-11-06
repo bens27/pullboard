@@ -1,11 +1,11 @@
 /** CLI proposal and exact person decisions for board-owned watches [A6,D3]. */
 import { forPersonRequest } from './policy-settings.js';
+import { personChannelFor, requirePersonChannelOrTouchId, touchIdPolicyAt } from './touch-id.js';
 import { PERSON } from './board.js';
 import {
   requireSignedPerson,
   signsPersonMoves,
 } from './person-signing-cli.js';
-import { requirePersonChannel } from './person.js';
 import { Refused } from './refused.js';
 import { dueSentinels } from './sentinels.js';
 import { sentinels } from './sentinels.js';
@@ -76,7 +76,7 @@ export async function sentinelCommand({ ctx, words, values, withBoard, whoAmI, o
   if (extra.length || !['propose', 'approve', 'decline'].includes(verb) || !name) {
     throw new Refused('USAGE', 'use pullboard sentinel run, sentinel propose <name> --check "<command>" --every 10m --owner <seat or lane>, sentinel approve <name>, sentinel decline <name> --reason "<why>", or pullboard sentinels');
   }
-  if (verb !== 'propose' && !signsPersonMoves(ctx.info.root) && !values['for-person']) requirePersonChannel(ctx.io.personChannel);
+  if (verb !== 'propose' && !signsPersonMoves(ctx.info.root) && !values['for-person']) requirePersonChannelOrTouchId(ctx.io.personChannel, () => touchIdPolicyAt(ctx));
   return withBoard(ctx, async board => {
     const me = whoAmI(ctx, board);
     let row;
@@ -94,8 +94,8 @@ export async function sentinelCommand({ ctx, words, values, withBoard, whoAmI, o
       const forPerson = forPersonRequest(ctx, board, me.id, values);
       const confirmed = await requireSignedPerson(ctx, board, me, { verb: `sentinel-${verb}`, args: { name, digest, ...(verb === 'decline' ? { reason: String(values.reason ?? '') } : {}) } });
       if (confirmed !== null) return confirmed;
-      if (!forPerson) requirePersonChannel(ctx.io.personChannel);
-      row = await ordered(ctx, board, 'decideSentinel', [{ agentId: PERSON, channel: forPerson?.channel ?? ctx.io.personChannel ?? 'terminal',
+      const channel = forPerson?.channel ?? await personChannelFor(board, ctx.io.personChannel, { action: { command: `sentinel ${verb}`, ids: [name] }, root: ctx.info.root });
+      row = await ordered(ctx, board, 'decideSentinel', [{ agentId: PERSON, channel,
         name, digest, decision: verb, reason: (values.reason ?? '').trim(), ...(forPerson ? { note: forPerson.note } : {}) }]);
       if (forPerson) ctx.io.say(`recorded by the coordinator for the person: ${forPerson.note}`);
     }

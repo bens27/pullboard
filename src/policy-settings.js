@@ -10,11 +10,12 @@ export const POLICY_SETTINGS = Object.freeze({
   selfVerify: 'an earlier claimer, or a seat of the builder\'s agent session, never verifies the item; the building seat never does whatever the policy (SELF_VERIFY, SELF_SESSION_VERIFY)',
   mainVerifier: 'a verdict from the main checkout needs --as coordinator (MAIN_IS_COORDINATOR)',
   personChannel: 'person-only moves come only from the person\'s own terminal or view; off lets the coordinator record one for the person with --for-person --note (B26_PERSON_CHANNEL)',
+  personTouchId: 'on a Mac, a spec, check or sentinel decision typed into an agent\'s terminal proceeds once the person confirms it with Touch ID, recorded with channel touchid (B26_PERSON_CHANNEL)',
   personPhoneOnly: 'on a linked board, a person move goes only from the paired phone; off lets the person\'s own terminal or view on a Mac signed in with pullboard relay person on send it, after macOS asks them to allow it (HUMAN_REQUIRED)',
 });
 
 /** The person's chosen defaults: an independent verifier stays on; the other policies start off. */
-export const POLICY_DEFAULTS = Object.freeze({ verifierStanding: false, selfVerify: true, mainVerifier: false, personChannel: false, personPhoneOnly: false });
+export const POLICY_DEFAULTS = Object.freeze({ verifierStanding: false, selfVerify: true, mainVerifier: false, personChannel: false, personTouchId: false, personPhoneOnly: false });
 
 /** The board_meta key a policy's line setting is stored under. */
 export function policyKey(name) { return `policy.${name}`; }
@@ -35,9 +36,17 @@ export const FOR_PERSON_CHANNEL = 'for-person';
 /** The principal a for-person record names, so it never reads as the person's own decision. */
 export const FOR_PERSON_BY = 'coordinator-for-person';
 
+/** The channel a person move carries when Touch ID confirmed it in an agent's terminal (src/touch-id.js). */
+export const TOUCH_ID_CHANNEL = 'touchid';
+
+/** Whether a channel is the person's own: their terminal, the view, or Touch ID while the board turns policy.personTouchId on. */
+export function personOwnChannel(board, channel) {
+  return ['terminal', 'view'].includes(channel) || channel === TOUCH_ID_CHANNEL && policyOn(board, 'personTouchId');
+}
+
 /** Whether a person move may arrive on this channel: the person's own channels, or the coordinator's for-person record while the policy is off. */
 export function personChannelAccepted(board, channel) {
-  return ['terminal', 'view'].includes(channel) || channel === FOR_PERSON_CHANNEL && !policyOn(board, 'personChannel');
+  return personOwnChannel(board, channel) || channel === FOR_PERSON_CHANNEL && !policyOn(board, 'personChannel');
 }
 
 /** The person moves a coordinator may record for the person: row decisions and answers, check acceptance, sentinel decisions. */

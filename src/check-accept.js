@@ -3,6 +3,7 @@ import {
   forPersonRequest,
   personChannelAccepted,
 } from './policy-settings.js';
+import { personChannelCheck, requirePersonChannelOrTouchId, touchIdPolicyAt } from './touch-id.js';
 import { CHECK_ACCEPT_ENGINE } from './move-engine-constants.js';
 export { CHECK_ACCEPT_ENGINE };
 /**
@@ -19,7 +20,6 @@ import {
   logEvent,
 } from './board.js';
 import { COORDINATOR } from './config.js';
-import { requirePersonChannel } from './person.js';
 import { Refused } from './refused.js';
 import { mainPolicy } from './trusted-policy-read.js';
 
@@ -131,15 +131,16 @@ export function refuseClaimProvesNothing(root, board, id) {
  * @returns {Promise<number>}
  */
 export async function checkAcceptCommand(io, first, rest, { context, withBoard, whoAmI, ordered, idArg }, values = {}) {
-  if (!values['for-person']) requirePersonChannel(io.personChannel);
+  if (!values['for-person']) requirePersonChannelOrTouchId(io.personChannel, () => touchIdPolicyAt(context(io)));
   if (!/^#?\d+$/u.test(first ?? '') || rest.length) throw new Refused('USAGE', 'pullboard check accept <id>');
   const ctx = context(io);
   return withBoard(ctx, async (board) => {
     const forPerson = forPersonRequest(ctx, board, whoAmI(ctx, board).id, values);
+    const person = forPerson ? null : personChannelCheck(board, io.personChannel, { action: { command: 'check accept', ids: [`#${String(first).replace(/^#/u, '')}`] }, root: ctx.info.root });
     if (!ctx.info.isMain || whoAmI(ctx, board).id !== COORDINATOR) throw new Refused('B26_PERSON_APPROVAL', 'only the person accepts a check, from the main checkout or the view', 'ask the person to accept it in pullboard view, or in their own terminal at the main checkout');
     const item = getItem(board, idArg(first));
     if (!item.item_check) throw new Refused('NO_CHECK', `#${item.item_id} has no check command to accept; its proof is the project gate: pullboard gate`);
-    const accepted = await ordered(ctx, board, 'acceptCheck', [item.item_id, { agentId: PERSON, channel: forPerson?.channel ?? io.personChannel ?? 'terminal', digest: checkDigest(item.item_check), ...(forPerson ? { note: forPerson.note } : {}) }]);
+    const accepted = await ordered(ctx, board, 'acceptCheck', [item.item_id, { agentId: PERSON, channel: forPerson?.channel ?? await person.confirm(), digest: checkDigest(item.item_check), ...(forPerson ? { note: forPerson.note } : {}) }]);
     io.result?.({ id: accepted.id, digest: accepted.digest, check: accepted.check });
     io.say(`accepted #${accepted.id}'s check as it reads now: ${accepted.check}`);
     io.say('a changed check needs the person to accept it again');

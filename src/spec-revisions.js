@@ -1,5 +1,6 @@
 /** Board-only proposed changes to approved requirements [P6,B23,N39]. */
 import { readFileSync } from 'node:fs';
+import { personOwnChannel } from './policy-settings.js';
 import { join } from 'node:path';
 import {
   atomic,
@@ -105,7 +106,7 @@ export function prepareSpecRevisionDecisions(root, config, drafts, { ids, decisi
 
 /** Person-only atomic proposal disposition; a decline never replaces its target's approval. */
 export function decideSpecRevisions(board, { agentId, channel, decisions }) {
-  if (agentId !== PERSON || !['terminal', 'view'].includes(channel)) throw new Refused('B26_PERSON_APPROVAL', 'only the person decides revisions through their terminal or view');
+  if (agentId !== PERSON || !personOwnChannel(board, channel)) throw new Refused('B26_PERSON_APPROVAL', 'only the person decides revisions through their terminal or view');
   if (!Array.isArray(decisions) || !decisions.length) throw new Refused('SPEC_REVISION', 'name a pending revision proposal');
   return atomic(board, () => {
     let drafts = rowDrafts(board);
