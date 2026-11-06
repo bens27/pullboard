@@ -103,6 +103,7 @@ export const LINE_SETTING_DEFINITIONS = Object.freeze({
   'policy.selfVerify': Object.freeze({ type: 'boolean', default: true }),
   'policy.mainVerifier': Object.freeze({ type: 'boolean', default: false }),
   'policy.personChannel': Object.freeze({ type: 'boolean', default: false }),
+  'policy.personTouchId': Object.freeze({ type: 'boolean', default: false }),
 });
 
 /** Refuse unknown controls and out-of-range values without changing any live queue behavior. */

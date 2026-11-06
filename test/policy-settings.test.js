@@ -39,7 +39,7 @@ function submitted() {
 const verdict = (agentId) => ({ agentId, decision: 'ACCEPT', reason: 'CRITERION_MET', head: SHA_A, digest: 'digest:Page', policy: 'any', note: 'ran the check' });
 
 test('a new board starts with selfVerify on and every other policy off, and needs no window to change [R1,V1]', () => {
-  const defaults = { verifierStanding: false, selfVerify: true, mainVerifier: false, personChannel: false };
+  const defaults = { verifierStanding: false, selfVerify: true, mainVerifier: false, personChannel: false, personTouchId: false };
   for (const name of Object.keys(POLICY_SETTINGS)) {
     assert.equal(policyOn(board, name), defaults[name], `${name} starts at the person's default`);
     assert.equal(lineSettings(board)[`policy.${name}`], defaults[name]);

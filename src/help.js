@@ -35,7 +35,8 @@ Set up
                                         names: order, reviewsFirst, wipPerReviewer (1.5-3), barReady, bar.check, takeoverMinutes (15-60), collisionFreeBatch, landingBatchSize (1-8), landingCadenceMinutes (5-30)
   pullboard settings policy              read the workflow policies; selfVerify starts on, the others off
                                         set one: settings policy.<name> on|off --reason "why"
-                                        names: verifierStanding, selfVerify, mainVerifier, personChannel
+                                        names: verifierStanding, selfVerify, mainVerifier, personChannel, personTouchId
+                                        with personTouchId on, a Mac asks for Touch ID when the person types a spec, check or sentinel decision into an agent's terminal
                                         with personChannel off, the coordinator records a person move it was told in the main checkout:
                                         spec approve|decline|answer|signoff, check accept, sentinel approve|decline ... --for-person --note "<what the person said>"
   pullboard settings [gateSlots <n> | browserSlots <n> | gate.runnersFirst on|off]  view or set machine gate policy and capacity (gate default 2; browser default 1)
