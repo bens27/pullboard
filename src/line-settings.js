@@ -16,7 +16,7 @@ const PREFIX = 'line_setting:';
 
 /** Read the latest recorded values, with every absent control explicitly off. */
 export function lineSettings(board) {
-  const values = Object.fromEntries(Object.keys(LINE_SETTING_DEFINITIONS).map(key => [key, false]));
+  const values = Object.fromEntries(Object.entries(LINE_SETTING_DEFINITIONS).map(([key, definition]) => [key, definition.default ?? false]));
   for (const row of board.db.prepare("SELECT meta_key, meta_value FROM board_meta WHERE meta_key GLOB 'line_setting:*'").all()) {
     const key = row.meta_key.slice(PREFIX.length);
     if (!Object.hasOwn(values, key)) continue; // A future engine may have a control this reader does not know.
@@ -46,7 +46,9 @@ export function setLineSetting(board, { agentId, key, value, reason, window } = 
   if ((board.executionEngineVersion ?? required) < required) throw new Refused('ENGINE_VERSION', 'upgrade Pullboard before recording or replaying board line settings');
   validateLineSetting(key, value);
   if (typeof reason !== 'string' || !reason.trim()) throw new Refused('LINE_SETTING_REASON', 'give the reason for this change with --reason "what the measured window shows"');
-  const change = { key, value, reason: reason.trim(), window: windowNumbers(window) };
+  // A policy is the person's call, not a measured queue control, so its window is optional.
+  const policy = key.startsWith('policy.');
+  const change = { key, value, reason: reason.trim(), ...(policy && window == null ? {} : { window: windowNumbers(window) }) };
   return atomic(board, () => {
     board.db.prepare('INSERT INTO board_meta (meta_key, meta_value) VALUES (?, ?) ON CONFLICT(meta_key) DO UPDATE SET meta_value=excluded.meta_value')
       .run(PREFIX + key, JSON.stringify(value));

@@ -98,6 +98,11 @@ export const LINE_SETTING_DEFINITIONS = Object.freeze({
   collisionFreeBatch: Object.freeze({ type: 'boolean' }),
   landingBatchSize: Object.freeze({ type: 'number', min: 1, max: 8, integer: true }),
   landingCadenceMinutes: Object.freeze({ type: 'number', min: 5, max: 30, integer: true }),
+  // Workflow policies, each at its default until the board changes it (src/policy-settings.js).
+  'policy.verifierStanding': Object.freeze({ type: 'boolean', default: false }),
+  'policy.selfVerify': Object.freeze({ type: 'boolean', default: true }),
+  'policy.mainVerifier': Object.freeze({ type: 'boolean', default: false }),
+  'policy.personChannel': Object.freeze({ type: 'boolean', default: false }),
 });
 
 /** Refuse unknown controls and out-of-range values without changing any live queue behavior. */

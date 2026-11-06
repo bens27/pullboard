@@ -7,6 +7,8 @@ export const DEFAULT_NEXT_STEPS = Object.freeze({
   PERSON_AUTHORITY: 'upgrade the relay so it publishes its passkey stamp key, then retry',
   PERSON_AUTHORITY_CHANGED: 'check which relay this board belongs to; link it to the relay it pinned',
   PERSON_PROPOSAL: 'start the person move from a terminal seat, then confirm it with your passkey',
+  FOR_PERSON_NOTE: 'add --note with what the person said, in their words: --for-person --note "<what the person said>"',
+  FOR_PERSON_COORDINATOR: 'run it as the coordinator from the main checkout, or have the person decide in pullboard view',
   PERSON_SIGNED: 'confirm it with your passkey in the relay view; pair a phone or browser first with pullboard relay on --all',
   PERSON_SIGNER_REQUIRED: 'decide the other rows with your passkey; a row that names SSH signers waits until signing is off',
   PERSON_SIGNING_CORRUPT: 'restore the board from a known-good export',

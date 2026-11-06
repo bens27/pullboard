@@ -1,4 +1,5 @@
 /** CLI proposal and exact person decisions for board-owned watches [A6,D3]. */
+import { forPersonRequest } from './policy-settings.js';
 import { PERSON } from './board.js';
 import {
   requireSignedPerson,
@@ -75,7 +76,7 @@ export async function sentinelCommand({ ctx, words, values, withBoard, whoAmI, o
   if (extra.length || !['propose', 'approve', 'decline'].includes(verb) || !name) {
     throw new Refused('USAGE', 'use pullboard sentinel run, sentinel propose <name> --check "<command>" --every 10m --owner <seat or lane>, sentinel approve <name>, sentinel decline <name> --reason "<why>", or pullboard sentinels');
   }
-  if (verb !== 'propose' && !signsPersonMoves(ctx.info.root)) requirePersonChannel(ctx.io.personChannel);
+  if (verb !== 'propose' && !signsPersonMoves(ctx.info.root) && !values['for-person']) requirePersonChannel(ctx.io.personChannel);
   return withBoard(ctx, async board => {
     const me = whoAmI(ctx, board);
     let row;
@@ -90,11 +91,13 @@ export async function sentinelCommand({ ctx, words, values, withBoard, whoAmI, o
       if (!current) throw new Refused('STALE_SENTINEL', 'read the current proposals with pullboard sentinels');
       const digest = values.digest ?? current.digest;
       if (digest !== current.digest) throw new Refused('STALE_SENTINEL', 'this proposal changed after it was shown; refresh the pending watch and decide its current command, directory and schedule');
+      const forPerson = forPersonRequest(ctx, board, me.id, values);
       const confirmed = await requireSignedPerson(ctx, board, me, { verb: `sentinel-${verb}`, args: { name, digest, ...(verb === 'decline' ? { reason: String(values.reason ?? '') } : {}) } });
       if (confirmed !== null) return confirmed;
-      requirePersonChannel(ctx.io.personChannel);
-      row = await ordered(ctx, board, 'decideSentinel', [{ agentId: PERSON, channel: ctx.io.personChannel ?? 'terminal',
-        name, digest, decision: verb, reason: (values.reason ?? '').trim() }]);
+      if (!forPerson) requirePersonChannel(ctx.io.personChannel);
+      row = await ordered(ctx, board, 'decideSentinel', [{ agentId: PERSON, channel: forPerson?.channel ?? ctx.io.personChannel ?? 'terminal',
+        name, digest, decision: verb, reason: (values.reason ?? '').trim(), ...(forPerson ? { note: forPerson.note } : {}) }]);
+      if (forPerson) ctx.io.say(`recorded by the coordinator for the person: ${forPerson.note}`);
     }
     ctx.io.result?.({ sentinel: row });
     ctx.io.say(`${name}: ${row.status}; ${row.every}; owner ${row.owner}; directory ${row.directory}\n  ${row.check}`);

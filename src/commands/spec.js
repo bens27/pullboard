@@ -1,5 +1,6 @@
 /** The pullboard spec command, in its own module so an item adding another command never edits these lines. */
 import { verifiedPasskeyRowDecision } from '../person-signing.js';
+import { forPersonRequest } from '../policy-settings.js';
 import {
   planRowVerificationApply,
   rowVerificationFindings,
@@ -159,12 +160,12 @@ export async function specCommand(io, { first, second, rest, values }) {
     show: [],
     verify: ['reason'],
     unmet: ['must'],
-    signoff: ['by', 'note', 'note-file'],
+    signoff: ['by', 'note', 'note-file', 'for-person'],
     signers: ['key', 'by'],
     draft: ['aim', 'gate', 'section', 'doctrine', 'source', 'revises', 'reason', 'status'],
-    approve: ['by', 'text'],
-    decline: ['reason'],
-    answer: [],
+    approve: ['by', 'text', 'for-person', 'note'],
+    decline: ['reason', 'for-person', 'note'],
+    answer: ['for-person', 'note'],
     apply: [],
     fit: ['text', 'reason'],
   }[first ?? '--json'];
@@ -246,6 +247,7 @@ export async function specCommand(io, { first, second, rest, values }) {
   if (first === 'approve' || first === 'decline') {
     return withBoard(ctx, async (board) => {
       const me = whoAmI(ctx, board);
+      const forPerson = forPersonRequest(ctx, board, me.id, values, { signed: personSigning(board).signed });
       const ids = [second, ...rest].filter(Boolean).flatMap((text) => text.split(/[\s,]+/u)).filter(Boolean);
       const drafts = store.rowDrafts(board);
       const revisionIds = ids.filter(id => drafts.some(draft => draft.id === id && draft.revises));
@@ -265,7 +267,8 @@ export async function specCommand(io, { first, second, rest, values }) {
       () => shownDecisionRows(ctx.info.root, ctx.config, ids));
     if (confirmed !== null) return confirmed;
       const sources = personSigning(board).signed ? shownDecisionRows(ctx.info.root, ctx.config, ids) : [];
-      requirePersonChannel(io.personChannel);
+      if (!forPerson) requirePersonChannel(io.personChannel);
+      const channel = forPerson?.channel ?? io.personChannel ?? 'terminal';
       if (!ctx.info.isMain || me.id !== COORDINATOR) throw new Refused('B26_PERSON_APPROVAL', 'only the person from the main checkout approves or declines rows; use pullboard view for the person to decide');
       if (personSigning(board).signed) {
         const decidable = [...spec.rows, ...(practice.rows ?? []).map((row) => ({ ...row, id: `doctrine:${row.id}` }))];
@@ -273,10 +276,12 @@ export async function specCommand(io, { first, second, rest, values }) {
         requireShownRows(board, io.personRequest, decidable, ids, sources);
       }
       if (revisionIds.length) {
+        // Rewriting an approved row stays the person's own act, whatever the board's person-channel policy.
+        if (forPerson) throw new Refused('B26_PERSON_APPROVAL', 'a revision of an approved row waits for the person themselves: pullboard view, or their own terminal');
         if (revisionIds.length !== ids.length || values.text !== undefined) throw new Refused('SPEC_REVISION', 'decide exact revision proposals separately; draft a new proposal to change its text');
         const records = prepareSpecRevisionDecisions(ctx.info.root, ctx.config, drafts, { ids, decision: first,
           reason: values.reason, by: values.by, on: new Date().toISOString(), commit: headCommit(ctx.info.root) ?? '' });
-        const decisions = await ordered(ctx, board, 'decideSpecRevisions', [{ agentId: store.PERSON, channel: io.personChannel ?? 'terminal', decisions: records }]);
+        const decisions = await ordered(ctx, board, 'decideSpecRevisions', [{ agentId: store.PERSON, channel, decisions: records }]);
         io.result?.({ decisions });
         revisionIds.forEach(id => io.say(`${id}: ${first === 'approve' ? 'approved, pending apply' : 'declined; approved row unchanged'}`));
         return 0;
@@ -285,10 +290,10 @@ export async function specCommand(io, { first, second, rest, values }) {
       const signedDecision = personSigning(board).signed;
       const kept = first === 'approve' ? pendingAnswers(ctx.info.root, ctx.config, ids, store.rowDecisions(board)) : new Map();
       if (signedDecision && values.text === undefined && kept.size) throw new Refused('STALE_ROW_DECISION', 'this row has a pending answer different from the original shown source', 'approve one row with --text containing the exact pending answer you want your passkey to confirm');
-      const decide = { decision: first, reason: values.reason, by: signedDecision ? 'person' : values.by, sshSign: !signedDecision, passkeyRequest: signedDecision ? io.personRequest?.id : undefined, on: new Date().toISOString(), commit: headCommit(ctx.info.root) ?? '' };
+      const decide = { decision: first, reason: values.reason, by: signedDecision ? 'person' : forPerson?.by ?? values.by, sshSign: !signedDecision && !forPerson, passkeyRequest: signedDecision ? io.personRequest?.id : undefined, on: new Date().toISOString(), commit: headCommit(ctx.info.root) ?? '', ...(forPerson ? { note: forPerson.note } : {}) };
       const records = values.text === undefined && kept.size ? ids.flatMap((id) => prepareRowDecisions(ctx.info.root, ctx.config, { ...decide, ids: [id], text: kept.get(id)?.text }))
         : prepareRowDecisions(ctx.info.root, ctx.config, { ...decide, ids, text: values.text });
-      const decisions = await ordered(ctx, board, 'recordRowDecisions', [{ agentId: store.PERSON, channel: io.personChannel ?? 'terminal', decisions: records }]);
+      const decisions = await ordered(ctx, board, 'recordRowDecisions', [{ agentId: store.PERSON, channel, decisions: records }]);
       io.result?.({ decisions });
       decisions.forEach((record) => {
         const old = record.kind === 'spec' ? kept.get(record.id) : undefined;
@@ -296,6 +301,7 @@ export async function specCommand(io, { first, second, rest, values }) {
         if (old && old.text !== record.text) io.say(`${record.id}: this text replaces the pending answer ${old.answer} with ${now === null ? `"${record.text}"` : `the answer ${now}`}`);
         io.say(`${record.kind === 'doctrine' ? 'doctrine:' : ''}${record.id}: ${first === 'approve' ? (old && old.text === record.text ? `approved with the answer ${old.answer}` : 'approved') : 'declined'}, pending apply`);
       });
+      if (forPerson) io.say(`recorded by the coordinator for the person: ${forPerson.note}`);
       return 0;
     });
   }
@@ -328,9 +334,10 @@ export async function specCommand(io, { first, second, rest, values }) {
       return requireSignedPerson(ctx, board, whoAmI(ctx, board), { verb: 'spec-answer', args: { row: second, answer: rest.join(' ').trim() } }, shownDecisionRows(ctx.info.root, ctx.config, [row.id]));
     }) : null;
     if (completed !== null) return completed;
-    requirePersonChannel(io.personChannel, process.env, { command: personCommand(primaryCheckoutRoot(ctx.info) ?? ctx.info.root, ['spec', 'answer', second, rest.join(' ')]) });
+    if (!values['for-person']) requirePersonChannel(io.personChannel, process.env, { command: personCommand(primaryCheckoutRoot(ctx.info) ?? ctx.info.root, ['spec', 'answer', second, rest.join(' ')]) });
     return withBoard(ctx, async (board) => {
       const me = whoAmI(ctx, board);
+      const forPerson = forPersonRequest(ctx, board, me.id, values, { signed: personSigning(board).signed });
       if (!ctx.info.isMain || me.id !== COORDINATOR) throw new Refused('B26_PERSON_APPROVAL', 'only the person answers a pending question, from the main checkout or the view', 'ask the person to answer it in pullboard view, or in their own terminal at the main checkout');
       const given = rest.join(' ').trim();
       if (!second || !given || /[\r\n|]/u.test(given)) throw new Refused('USAGE', 'give one row and a one-line answer without a field separator: pullboard spec answer <id> "<choice or text>"');
@@ -339,12 +346,13 @@ export async function specCommand(io, { first, second, rest, values }) {
       if (row.status !== 'pending') throw new Refused('SPEC_ANSWER', `${second} is ${row.status}, not a pending question`, `read it with pullboard spec show ${second}; only a pending row takes an answer`);
       if (personSigning(board).signed) requireShownRows(board, io.personRequest, [row], [second], shownDecisionRows(ctx.info.root, ctx.config, [second]));
       const { text } = answerQuestion(row.text, given, second);
-      const records = prepareRowDecisions(ctx.info.root, ctx.config, { ids: [second], decision: 'approve', text, sshSign: !personSigning(board).signed, passkeyRequest: personSigning(board).signed ? io.personRequest?.id : undefined, by: personSigning(board).signed ? 'person' : undefined, on: new Date().toISOString(), commit: headCommit(ctx.info.root) ?? '' });
-      const decisions = await ordered(ctx, board, 'recordRowDecisions', [{ agentId: store.PERSON, channel: io.personChannel ?? 'terminal', decisions: records }]);
+      const records = prepareRowDecisions(ctx.info.root, ctx.config, { ids: [second], decision: 'approve', text, sshSign: !personSigning(board).signed && !forPerson, passkeyRequest: personSigning(board).signed ? io.personRequest?.id : undefined, by: personSigning(board).signed ? 'person' : forPerson?.by, on: new Date().toISOString(), commit: headCommit(ctx.info.root) ?? '', ...(forPerson ? { note: forPerson.note } : {}) });
+      const decisions = await ordered(ctx, board, 'recordRowDecisions', [{ agentId: store.PERSON, channel: forPerson?.channel ?? io.personChannel ?? 'terminal', decisions: records }]);
       // The answer reported is read back from the signed text, never carried as a field of its own.
       const answered = decisions.map((record) => ({ ...record, answer: decisionAnswer(record) }));
       io.result?.({ decisions: answered });
       answered.forEach((record) => io.say(`${record.id}: answered ${record.answer}, pending apply`));
+      if (forPerson) io.say(`recorded by the coordinator for the person: ${forPerson.note}`);
       return 0;
     });
   }
@@ -529,7 +537,8 @@ export async function specCommand(io, { first, second, rest, values }) {
     return 0;
   }
   if (first === 'signoff') {
-    requirePersonChannel(io.personChannel);
+    const forPerson = values['for-person'] ? withBoard(ctx, (board) => forPersonRequest(ctx, board, whoAmI(ctx, board).id, values)) : null;
+    if (!forPerson) requirePersonChannel(io.personChannel);
     const ids = [second, ...rest].filter(Boolean).flatMap((text) => idList(text));
     if (!ids.length) throw new Refused('USAGE', 'pullboard spec signoff <ids> [--by <principal>] [--note "what was checked"]');
     const invalid = ids.filter((id) => spec.rows.find((row) => row.id === id)?.status !== 'approved');
@@ -545,9 +554,10 @@ export async function specCommand(io, { first, second, rest, values }) {
       for (const file of row.files) io.say(`    ${file}`);
       for (const item of row.verified) io.say(`  verified #${item.id}: ${item.note || '(no accepting note)'}`);
     }
-    const note = textArg(io, values, 'note') ?? '';
-    const by = values.by ?? (hasSignerFile(ctx.info.root) ? defaultPrincipal(ctx.info.root) : '');
-    const count = signOff(ctx.info.root, spec, { ids, by, on: new Date().toISOString(), note, commit: headCommit(ctx.info.root) ?? '' });
+    const note = forPerson ? forPerson.note : textArg(io, values, 'note') ?? '';
+    // A for-person sign-off names the coordinator as its recorder; it is never signed with the person's key.
+    const by = forPerson ? forPerson.by : values.by ?? (hasSignerFile(ctx.info.root) ? defaultPrincipal(ctx.info.root) : '');
+    const count = signOff(ctx.info.root, spec, { ids, by, on: new Date().toISOString(), note, commit: headCommit(ctx.info.root) ?? '', forPerson: Boolean(forPerson) });
     io.result?.({ count, by, ids, evidence });
     io.say(`signed ${count} rows as ${by}; commit .pullboard/signoffs.jsonl`);
     return 0;

@@ -244,6 +244,7 @@ test('an agent in its worktree cannot mint a relay token [H2,V1,E3,E5,P6]', asyn
   });
 
   await t.test('linked verify refuses the builder line and seats without standing, in one line', () => {
+    store.setLineSetting(board, { agentId: 'coordinator', key: 'policy.verifierStanding', value: true, reason: 'this linked board asks for relay standing' });
     const item = submitted(board, builder.id, lane);
     /** The accept arguments a seat sends for this item. */
     const verdict = (agentId) => [item.item_id, { agentId, decision: 'ACCEPT', reason: 'CRITERION_MET', note: 'checked the proof', head: 'd'.repeat(40), digest: item.item_frozen_digest }];

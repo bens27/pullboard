@@ -46,6 +46,7 @@ function content(box, cwd, value, message) {
 
 test('a merge-only resubmission keeps its accept and records the resolution diff [V1,V4,H16]', async () => {
   const box = e2e.project();
+  succeeds(box, box.repo, 'settings', 'policy.verifierStanding', 'on', '--reason', 'this board asks for relay standing');
   const config = JSON.parse(readFileSync(join(box.repo, 'pullboard.json'), 'utf8'));
   const configured = e2e.commitFile(box, box.repo, 'pullboard.json',
     JSON.stringify({ ...config, landing: { publish: 'separate' } }, null, 2), 'chore: configure local landing');

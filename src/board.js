@@ -1,3 +1,4 @@
+import { personChannelAccepted } from './policy-settings.js';
 import { REFERENCE_ENGINE } from './reference-engine.js';
 import { validateReferences } from './reference-authors.js';
 import {
@@ -2127,7 +2128,7 @@ function writeRowDecisions(board, records) {
 /** Record one exact-row decision per event; sender-side channel checks precede deterministic replay. */
 export function recordRowDecisions(board, { agentId, channel, decisions }) {
   if (agentId !== PERSON) throw new Refused('B26_PERSON_APPROVAL', 'only the person approves or declines rows; use pullboard view for the person to decide');
-  if (!['terminal', 'view'].includes(channel)) throw new Refused('B26_PERSON_CHANNEL', 'row decisions use the terminal or the view; use pullboard view');
+  if (!personChannelAccepted(board, channel)) throw new Refused('B26_PERSON_CHANNEL', 'row decisions use the terminal or the view; use pullboard view');
   if (!Array.isArray(decisions) || !decisions.length) throw new Refused('ROW_DECISION', 'name at least one row to approve or decline; use pullboard spec approve <ids>');
   const keys = new Set();
   for (const record of decisions) {

@@ -2,6 +2,11 @@ import { declaredMoveActor } from './move-registry.js';
 /** Compare sealed actors with the relay's independently authenticated sender [H2,H16,B26]. */
 import { VERIFIER_STANDING_ENGINE } from './machine.js';
 import { Refused } from './refused.js';
+import {
+  FOR_PERSON_CHANNEL,
+  forPersonMove,
+  personChannelAccepted,
+} from './policy-settings.js';
 
 /** Read only the actor field used by each public engine operation; unknown operations fail closed. */
 export function relayMoveActor(move) {
@@ -57,7 +62,7 @@ function personFact(move) {
 }
 
 /** Make the same authorization decision on every device, without inspecting its shell or checkout. */
-export function relaySenderProblem(move, sender, kind, { phoneReceipt = false } = {}) {
+export function relaySenderProblem(move, sender, kind, { phoneReceipt = false, board = null } = {}) {
   if (!validRelaySender(sender)) {
     return new Refused('RELAY_SENDER', 'this relay record has no authenticated sender; restore attribution before replaying it');
   }
@@ -85,6 +90,10 @@ export function relaySenderProblem(move, sender, kind, { phoneReceipt = false } 
         move.operation === 'ensureCoordinator' && typeof move.args?.[0] === 'string')) return null;
     return new Refused('RELAY_PERSON_ONLY', 'a machine cannot act as the person; approve this action on the paired phone');
   }
+  // With policy.personChannel off, the coordinator's seat may record a person move it names as for-person;
+  // the board's own state decides, so every replica replays it the same way.
+  if (kind === 'move' && sender.agent === 'coordinator' && board && personChannelAccepted(board, FOR_PERSON_CHANNEL) && forPersonMove(move)
+    && !personFact(move)) return null;
   if (personReferenceMove(move) || personBarMove(move) || kind === 'snapshot' || ['recordRowDecisions', 'decideSpecRevisions'].includes(move?.operation) || move?.operation === 'decideSentinel' || move?.operation === 'answerDecision' && move.args?.[1]?.asPerson ||
     move?.operation === 'shout' && move.args?.[0]?.request || relayMoveActor(move) === 'person') {
     return new Refused('RELAY_PERSON_ONLY', `agent ${sender.agent} cannot make a person-only relay ${kind}; use the person's authenticated session`);
@@ -102,6 +111,8 @@ export function credentialActor(move) {
     return typeof creator === 'string' && creator !== 'machine' ? creator : 'machine';
   }
   if (move.personRequest || ['register', 'ensureCoordinator'].includes(move.operation)) return 'machine';
+  // A person move the coordinator records on the person's behalf travels under the coordinator's own credential.
+  if (forPersonMove(move)) return 'coordinator';
   if (personReferenceMove(move) || personBarMove(move) || ['recordRowDecisions', 'decideSpecRevisions', 'recordLandingWaiver'].includes(move.operation)
     || move.operation === 'answerDecision' && args[1]?.asPerson
     || move.operation === 'shout' && args[0]?.request) return 'person';

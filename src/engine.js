@@ -283,7 +283,7 @@ function registrationProblem(board, move, { sender, registration, sequence, dige
 export function applyRelayMove(board, move, { sequence, at, sender, kind, digest = null, registration }) {
   requireSupportedEngine(move);
   const phoneReceipt = sender?.kind === 'machine' && move?.engine >= 6 && Boolean(move.personRequest) && !requestMoveProblem(board, move, { checkExecutorLease: false });
-  const problem = relaySenderProblem(move, sender, kind, { phoneReceipt })
+  const problem = relaySenderProblem(move, sender, kind, { phoneReceipt, board })
     ?? (kind === 'move' ? handoffMoveProblem(board, relayMoveActor(move), move.operation, move.args) : null)
     ?? (kind === 'move' ? registrationProblem(board, move, { sender, registration, sequence, digest }) : null)
     // With signing on, a person-only move counts only when it carries out a passkey-confirmed request [E22].

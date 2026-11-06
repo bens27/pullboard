@@ -71,8 +71,9 @@ test('the settings inventory exposes board line values and defaults without audi
   }
   assert.deepEqual(rows.map(row => row.key).sort(),
     Object.keys(LINE_SETTING_DEFINITIONS).map(key => `line.${key}`).sort());
-  for (const row of rows) assert.equal(row.value, row.key === 'line.wipPerReviewer' ? 2 : false,
+  for (const row of rows) assert.equal(row.value, row.key === 'line.wipPerReviewer' ? 2 : row.key === 'line.policy.selfVerify',
     `${row.key} exposes its configured value or default`);
+  assert.equal(rows.find(row => row.key === 'line.policy.selfVerify').default, true, 'selfVerify defaults on');
   assert.deepEqual(rows.find(row => row.key === 'line.wipPerReviewer'), { key: 'line.wipPerReviewer', scope: 'board',
     board: store.boardId(board), root: box.repo, value: 2, default: false,
     source: join(box.repo, '.git', 'pullboard', 'board.sqlite'), origin: 'configured' });

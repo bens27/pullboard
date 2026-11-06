@@ -5,6 +5,7 @@ import { Refused } from './refused.js';
 import { PARENT_SESSION_ENGINE } from './parent-session-engine.js';
 import { effectiveAgentParent } from './seats.js';
 import { standingProblem } from './seats.js';
+import { policyOn } from './policy-settings.js';
 
 /** Read one item's indexed author history; older ordered moves retain their original current-builder rule. */
 export function itemAuthors(board, item) {
@@ -18,6 +19,11 @@ export function itemAuthors(board, item) {
 
 /** Compare immutable author and parent identities without borrowing the current sender’s verifier credential. */
 function authorIdentityProblem(board, item, reviewer, authors) {
+  // The board schema itself refuses a verdict by the seat that built the item, so that one rule holds whatever the policy;
+  // earlier claimers and seats of the builder's parent session are refused only while policy.selfVerify is on.
+  if (!policyOn(board, 'selfVerify')) {
+    return reviewer === item.item_built_by ? new Refused('SELF_VERIFY', 'the seat that built an item never verifies it; verify from another seat') : null;
+  }
   if (authors.includes(reviewer)) return new Refused('SELF_VERIFY', 'the builder never verifies its own work; another agent must');
   if ((board.executionEngineVersion ?? ENGINE_VERSION) >= PARENT_SESSION_ENGINE) {
     const parent = effectiveAgentParent(board, reviewer);

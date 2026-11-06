@@ -111,6 +111,7 @@ test('a lone newcomer starts a reviewer with one command [V1,B26]', t => {
   const initialized = box.run(box.repo, 'init', '--verbose');
   if (model !== undefined) box.env.PULLBOARD_MODEL = model;
   assert.equal(initialized.code, 0, initialized.err);
+  assert.equal(box.run(box.repo, 'settings', 'policy.mainVerifier', 'on', '--reason', 'this board wants the coordinator to say so').code, 0);
   const added = box.run(box.repo, 'add', 'web', 'Ready for review', '--specs', 'G1',
     '--criterion', 'The readiness marker exists.', '--check', 'test -f web/ready');
   assert.equal(added.code, 0, added.err);

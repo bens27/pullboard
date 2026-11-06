@@ -547,9 +547,11 @@ export function unmetRows(rows, signoffs, { mustOnly = false } = {}) {
  * @param {{ ids: string[], by: string, on: string, note?: string, commit?: string }} signoff
  * @returns {number} How many rows were signed.
  */
-export function signOff(root, spec, { ids, by, on, note = '', commit = '' }) {
+export function signOff(root, spec, { ids, by, on, note = '', commit = '', forPerson = false }) {
   const ssh = hasSignerFile(root);
-  if (!(ssh ? SIGNER_RE : LEGACY_SIGNER_RE).test(by)) {
+  // An SSH-signed ledger holds only the signers' own signatures; a coordinator's record for the person would break it.
+  if (forPerson && ssh) throw new Refused('PERSON_SIGNER_REQUIRED', 'this repo signs sign-offs with its listed SSH keys, so the person signs it from their own terminal: pullboard spec signoff <ids>');
+  if (!forPerson && !(ssh ? SIGNER_RE : LEGACY_SIGNER_RE).test(by)) {
     throw new Refused('BAD_SIGNER', ssh ? 'sign with one principal: --by <principal>' : 'sign with initials or a first name: --by CO');
   }
   const byId = new Map(spec.rows.map((row) => [row.id, row]));

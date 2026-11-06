@@ -257,6 +257,7 @@ test('a red gate refuses submit [V4]', () => {
 
 test('verify runs at the submitted commit, against the criterion frozen at claim [V3, V7, V9, V19]', () => {
   const box = project();
+  assert.equal(box.run(box.repo, 'settings', 'policy.mainVerifier', 'on', '--reason', 'this board wants the coordinator to say so').code, 0);
   box.run(box.repo, 'add', 'web', 'Page', '--specs', 'G1', '--criterion', 'renders a heading');
   box.run(box.web, 'claim', '1');
   commitFile(box, box.web, 'web/a.html', '<h1>Hi</h1>', 'feat(web): page [G1]');
@@ -450,6 +451,7 @@ test('two agents racing for one item: exactly one wins, every time [B2]', async 
 
 test('next claims the next free item; --verify names the next to check [N2]', () => {
   const box = project();
+  assert.equal(box.run(box.repo, 'settings', 'policy.mainVerifier', 'on', '--reason', 'this board wants the coordinator to say so').code, 0);
   box.run(box.repo, 'add', 'web', 'Page', '--specs', 'G1');
   box.run(box.repo, 'add', 'web', 'Second page', '--specs', 'G1', '--after', '1');
   const first = box.run(box.web, 'next');

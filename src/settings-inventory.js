@@ -179,14 +179,15 @@ function boardLineSettings(rows, board) {
     const read = db.prepare('SELECT meta_value FROM board_meta WHERE meta_key = ?');
     for (const key of Object.keys(LINE_SETTING_DEFINITIONS)) {
       const stored = read.get('line_setting:' + key);
-      let value = false;
+      const fallback = LINE_SETTING_DEFINITIONS[key].default ?? false;
+      let value = fallback;
       if (stored) {
         try { value = JSON.parse(stored.meta_value); }
         catch { throw new Refused('BAD_SETTINGS', 'a stored board line setting is malformed; restore its recorded value'); }
       }
       validateLineSetting(key, value);
       rows.push({ key: 'line.' + key, scope: 'board', board: board.id, root: board.root,
-        value, default: false, source: file, origin: stored ? 'configured' : 'default' });
+        value, default: fallback, source: file, origin: stored ? 'configured' : 'default' });
     }
   } finally { db.close(); }
 }

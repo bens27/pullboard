@@ -1,3 +1,8 @@
+import {
+  FOR_PERSON_CHANNEL,
+  forPersonRequest,
+  personChannelAccepted,
+} from './policy-settings.js';
 import { CHECK_ACCEPT_ENGINE } from './move-engine-constants.js';
 export { CHECK_ACCEPT_ENGINE };
 /**
@@ -43,16 +48,17 @@ export function checkDigest(command) {
  * @param {{ agentId: string, channel: string, digest: string }} who
  * @returns {{ id: number, digest: string, check: string }}
  */
-export function acceptCheck(board, id, { agentId, channel, digest }) {
+export function acceptCheck(board, id, { agentId, channel, digest, note }) {
   if (agentId !== PERSON) throw new Refused('CHECK_ACCEPT_PERSON_ONLY', 'only the person accepts a check that already passes on main; ask the coordinator to bring it to the person');
-  if (!['terminal', 'view'].includes(channel)) throw new Refused('B26_PERSON_CHANNEL', 'a check acceptance uses the person’s terminal or view; run pullboard view');
+  if (channel === FOR_PERSON_CHANNEL && (typeof note !== 'string' || !note.trim())) throw new Refused('FOR_PERSON_NOTE', 'say what the person told you: --for-person --note "<what the person said>"');
+  if (!personChannelAccepted(board, channel)) throw new Refused('B26_PERSON_CHANNEL', 'a check acceptance uses the person’s terminal or view; run pullboard view');
   return atomic(board, () => {
     const item = itemById(board, id);
     if (!item.item_check) throw new Refused('NO_CHECK', `#${id} has no check command to accept; its proof is the project gate`);
     if (typeof digest !== 'string' || digest !== checkDigest(item.item_check)) {
       throw new Refused('CHECK_ACCEPT_STALE', `#${id}'s check changed since this acceptance was prepared; read the current check with pullboard show ${id} and accept it again`);
     }
-    logEvent(board, PERSON, 'check_accept', id, { digest, channel });
+    logEvent(board, PERSON, 'check_accept', id, { digest, channel, ...(channel === FOR_PERSON_CHANNEL ? { recordedBy: 'coordinator', note: note.trim() } : {}) });
     return { id, digest, check: item.item_check };
   });
 }
@@ -124,18 +130,20 @@ export function refuseClaimProvesNothing(root, board, id) {
  * @param {{ context: Function, withBoard: Function, whoAmI: Function, ordered: Function, idArg: Function }} cli
  * @returns {Promise<number>}
  */
-export async function checkAcceptCommand(io, first, rest, { context, withBoard, whoAmI, ordered, idArg }) {
-  requirePersonChannel(io.personChannel);
+export async function checkAcceptCommand(io, first, rest, { context, withBoard, whoAmI, ordered, idArg }, values = {}) {
+  if (!values['for-person']) requirePersonChannel(io.personChannel);
   if (!/^#?\d+$/u.test(first ?? '') || rest.length) throw new Refused('USAGE', 'pullboard check accept <id>');
   const ctx = context(io);
   return withBoard(ctx, async (board) => {
+    const forPerson = forPersonRequest(ctx, board, whoAmI(ctx, board).id, values);
     if (!ctx.info.isMain || whoAmI(ctx, board).id !== COORDINATOR) throw new Refused('B26_PERSON_APPROVAL', 'only the person accepts a check, from the main checkout or the view', 'ask the person to accept it in pullboard view, or in their own terminal at the main checkout');
     const item = getItem(board, idArg(first));
     if (!item.item_check) throw new Refused('NO_CHECK', `#${item.item_id} has no check command to accept; its proof is the project gate: pullboard gate`);
-    const accepted = await ordered(ctx, board, 'acceptCheck', [item.item_id, { agentId: PERSON, channel: io.personChannel ?? 'terminal', digest: checkDigest(item.item_check) }]);
+    const accepted = await ordered(ctx, board, 'acceptCheck', [item.item_id, { agentId: PERSON, channel: forPerson?.channel ?? io.personChannel ?? 'terminal', digest: checkDigest(item.item_check), ...(forPerson ? { note: forPerson.note } : {}) }]);
     io.result?.({ id: accepted.id, digest: accepted.digest, check: accepted.check });
     io.say(`accepted #${accepted.id}'s check as it reads now: ${accepted.check}`);
     io.say('a changed check needs the person to accept it again');
+    if (forPerson) io.say(`recorded by the coordinator for the person: ${forPerson.note}`);
     return 0;
   });
 }

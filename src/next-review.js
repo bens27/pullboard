@@ -2,6 +2,7 @@
  * pullboard next --verify (V15, #807): before a review is offered, every submitted head that no longer merges onto
  * the trunk goes back to its builder with Git's conflicting files, so no reviewer reserves work that cannot land.
  */
+import { policyOn } from './policy-settings.js';
 import * as store from './board.js';
 import { Refused } from './refused.js';
 import { refuseSelfSession } from './item-sessions.js';
@@ -73,7 +74,7 @@ export async function nextReview(ctx, board, me, values, { ordered, idArg, trunk
   if (values.verifyId !== undefined) {
     const id = idArg(values.verifyId, 'an item id after --verify');
     const item = store.getItem(board, id);
-    refuseSelfSession(ctx.info, item, undefined, itemAuthors(board, item));
+    if (policyOn(board, 'selfVerify')) refuseSelfSession(ctx.info, item, undefined, itemAuthors(board, item));
     return { item: await ordered('reserveReview', [id, reservation]), reasons: [] };
   }
   return await ordered('reserveNextReview', [{ agentId: me.id, lane: me.lane, leaseMs: ctx.config.reviewLeaseMs, policy: ctx.config.verify.policy,

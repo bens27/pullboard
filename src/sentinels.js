@@ -1,4 +1,8 @@
 import {
+  FOR_PERSON_CHANNEL,
+  personChannelAccepted,
+} from './policy-settings.js';
+import {
   sentinelDraftNeeds,
   sentinels,
 } from './board-query.js';
@@ -112,17 +116,19 @@ export function proposeSentinel(board, { agentId, row: value, evidence: cited })
 }
 
 /** Approve or decline precisely the row the person saw, through the same person channels as spec rows. */
-export function decideSentinel(board, { agentId, channel, name, digest, decision, reason = '' }) {
+export function decideSentinel(board, { agentId, channel, name, digest, decision, reason = '', note }) {
   return atomic(board, () => {
     requireSentinelActor(board, agentId, true);
-    if (!['terminal', 'view'].includes(channel)) throw new Refused('B26_PERSON_CHANNEL', 'sentinel decisions use the person’s terminal or Pullboard View');
+    if (channel === FOR_PERSON_CHANNEL && (typeof note !== 'string' || !note.trim())) throw new Refused('FOR_PERSON_NOTE', 'say what the person told you: --for-person --note "<what the person said>"');
+    if (!personChannelAccepted(board, channel)) throw new Refused('B26_PERSON_CHANNEL', 'sentinel decisions use the person’s terminal or Pullboard View');
     if (!['approve', 'decline'].includes(decision) || typeof reason !== 'string'
         || /[\r\n]/u.test(reason) || decision === 'decline' && !reason.trim()) {
       throw new Refused('BAD_SENTINEL', 'approve the current sentinel, or decline it with --reason "<why>"');
     }
     const row = currentSentinel(board, name, digest);
     if (decision === 'approve' && row.status === 'approved') return row;
-    logEvent(board, PERSON, 'sentinel-decision', null, { name, digest, decision, reason: reason.trim(), channel, engine: BOARD_SENTINEL_ENGINE });
+    logEvent(board, PERSON, 'sentinel-decision', null, { name, digest, decision, reason: reason.trim(), channel, engine: BOARD_SENTINEL_ENGINE,
+      ...(channel === FOR_PERSON_CHANNEL ? { recordedBy: 'coordinator', note: note.trim() } : {}) });
     return sentinels(board).find(row => row.name === name);
   });
 }

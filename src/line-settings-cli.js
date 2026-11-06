@@ -28,7 +28,7 @@ export function lineSettingsCommand(io, { second, rest, values = {} }) {
   const value = second === 'focusMilestone' ? (rest[0] === 'off' ? false : rest[0]) : rest[0] === 'on' ? true : rest[0] === 'off' ? false : Number(rest[0]);
   return actOn(io, async (ctx, board, me) => {
     const change = await ordered(ctx, board, 'setLineSetting', [{ agentId: me.id, key: second, value,
-      reason: values.reason, window: parseWindow(values.window) }]);
+      reason: values.reason, window: values.window === undefined && second.startsWith('policy.') ? undefined : parseWindow(values.window) }]);
     io.result?.({ lineSettings: lineSettings(board), change });
     io.say(`${second}: ${value === false ? 'off' : value}; recorded on this board`);
     return 0;

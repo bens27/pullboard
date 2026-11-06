@@ -28,10 +28,32 @@ import {
   withBoard,
 } from '../cli.js';
 import { boardId } from '../board.js';
+import { lineSettings } from '../line-settings.js';
+import {
+  POLICY_SETTINGS,
+  policyKey,
+} from '../policy-settings.js';
+import { withBoardRead } from '../cli.js';
+
+/** List each workflow policy, whether this board enforces it, and what it guards. */
+function policySettingsList(io) {
+  const settings = withBoardRead(context(io), lineSettings);
+  const policies = Object.fromEntries(Object.keys(POLICY_SETTINGS).map(name => [name, settings[policyKey(name)] === true]));
+  io.result?.({ policies });
+  for (const [name, why] of Object.entries(POLICY_SETTINGS)) io.say(`${policyKey(name)}: ${policies[name] ? 'on' : 'off'} - ${why}`);
+  return 0;
+}
 
 /** Read or update machine capacity, or delegate explicit board-owned line inputs. */
 export function settingsCommand(io, { first, second, rest, values }) {
   if (first === 'line') return lineSettingsCommand(io, { second, rest, values });
+  if (first === 'policy' && !second && !rest.length) return policySettingsList(io);
+  if (typeof first === 'string' && first.startsWith('policy.')) {
+    if (!Object.hasOwn(POLICY_SETTINGS, first.slice('policy.'.length)) || !['on', 'off'].includes(second) || rest.length) {
+      throw new Refused('USAGE', `pullboard settings policy.<name> on|off --reason "why"; names: ${Object.keys(POLICY_SETTINGS).join(', ')}`);
+    }
+    return lineSettingsCommand(io, { second: first, rest: [second], values });
+  }
   if (first === 'landing.pool') {
     if (!['on', 'off'].includes(second) || rest.length) throw new Refused('USAGE', 'pullboard settings landing.pool on|off in the board this machine should land');
     const ctx = context(io);

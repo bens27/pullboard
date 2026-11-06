@@ -1,3 +1,4 @@
+import { policyOn } from './policy-settings.js';
 import { createQueuedItemLease } from './queued-item-lease.js';
 export { resourceRunLabel } from './cli-resource-display.js';
 export { browserAdmissionReporter } from './cli-resource-display.js';
@@ -495,6 +496,8 @@ export function checkMainVerifier(ctx, board, values) {
     return;
   }
   if (values.as === COORDINATOR) return;
+  // With policy.mainVerifier off the main checkout simply is the coordinator, and its verdict is filed as the coordinator's.
+  if (!policyOn(board, 'mainVerifier')) return;
   const agents = store.listAgents(board).filter((agent) => agent.agent_id !== COORDINATOR);
   const listed = agents.length ? ` Agent worktrees: ${agents.slice(0, 6).map((agent) => `${displayAgentName(agent, ctx.config.agents.names)} at ${agent.agent_path}`).join('; ')}.` : '';
   const detached = tryGit(ctx.info.root, ['symbolic-ref', '-q', 'HEAD']).status !== 0 ? ' The main checkout is not on its branch; whoever switched it puts it back.' : '';

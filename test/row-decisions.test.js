@@ -437,6 +437,32 @@ test('[B26] agent markers and agent worktrees cannot decide rows; only the coord
   assert.equal(sourceRow(box, SPEC_FILE, 'G1').status, 'approved');
 });
 
+test('[B26] with policy.personChannel off the coordinator records a row decision for the person, attributed to itself', function forPersonRowDecision() {
+  const box = project();
+  const agent = { CLAUDECODE: '1' };
+  const before = eventCount(box);
+  const plain = box.run(box.root, ['spec', 'approve', 'G1', '--json'], agent);
+  assert.equal(JSON.parse(plain.stdout).error.code, 'B26_PERSON_CHANNEL', 'without --for-person an agent shell is still refused');
+  const noNote = box.run(box.root, ['spec', 'approve', 'G1', '--for-person', '--json'], agent);
+  assert.equal(JSON.parse(noNote.stdout).error.code, 'FOR_PERSON_NOTE', `${noNote.stdout}${noNote.stderr}`);
+  const lane = box.run(box.web, ['spec', 'approve', 'G1', '--for-person', '--note', 'the person said approve G1', '--json'], agent);
+  assert.equal(JSON.parse(lane.stdout).error.code, 'FOR_PERSON_COORDINATOR', 'a lane seat never records for the person');
+  assert.equal(eventCount(box), before, 'refused attempts record nothing');
+  const recorded = box.run(box.root, ['spec', 'approve', 'G1', '--for-person', '--note', 'the person said approve G1', '--json'], agent);
+  assert.equal(recorded.status, 0, `${recorded.stdout}${recorded.stderr}`);
+  const [decision] = JSON.parse(recorded.stdout).decisions;
+  assert.deepEqual({ by: decision.by, note: decision.note, signature: decision.signature }, { by: 'coordinator-for-person', note: 'the person said approve G1', signature: undefined });
+  const db = new DatabaseSync(join(box.root, '.git', 'pullboard', 'board.sqlite'), { readOnly: true });
+  try {
+    const detail = JSON.parse(db.prepare("SELECT event_detail FROM event WHERE event_kind = 'row_decision' ORDER BY event_id DESC LIMIT 1").get().event_detail);
+    assert.equal(detail.channel, 'for-person', 'the event names the coordinator channel, not the person\'s terminal');
+  } finally { db.close(); }
+  const on = box.run(box.root, ['settings', 'policy.personChannel', 'on', '--reason', 'the person wants to decide themselves', '--json'], agent);
+  assert.equal(on.status, 0, `${on.stdout}${on.stderr}`);
+  const held = box.run(box.root, ['spec', 'decline', 'G2', '--reason', 'no', '--for-person', '--note', 'the person said decline', '--json'], agent);
+  assert.equal(JSON.parse(held.stdout).error.code, 'B26_PERSON_CHANNEL', 'policy on: only the person decides');
+});
+
 test('[B26,S18,S19] stale row text refuses apply without changing any approved row', function staleApplyIsAtomic() {
   const box = project();
   for (const id of ['G1', 'G2']) {

@@ -81,6 +81,7 @@ test('every refusal names a next step that works [P4,I1,I2]', async () => {
   writeFileSync(gateFile, "if (require('node:fs').existsSync('web/RED')) { console.log('GATE_FAILURE_MARKER'); process.exit(1); }\n");
   const gate = `'${process.execPath.replaceAll("'", "'\\''")}' '${gateFile.replaceAll("'", "'\\''")}'`;
   const { repo, web } = e2e.project(gate, box);
+  succeeded(box.run(repo, 'settings', 'policy.mainVerifier', 'on', '--reason', 'this board wants the coordinator to say so'));
   const id = addBuild(box, repo, 'Independent review recovery', gate);
   succeeded(box.run(web, 'claim', String(id)));
   mkdirSync(join(web, 'web'), { recursive: true });

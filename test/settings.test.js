@@ -102,8 +102,9 @@ test('a line setting change is a recorded move with its reason and its range [R1
   assert.equal(initial.code, 0, initial.err);
   const defaults = { order: false, focusMilestone: false, collisionFreeBatch: false, reviewsFirst: false, wipPerReviewer: false, barReady: false,
     'bar.check': false, takeoverMinutes: false,
-    landingBatchSize: false, landingCadenceMinutes: false };
-  assert.deepEqual(JSON.parse(initial.out).lineSettings, defaults, 'all line controls start off, not silently enabled by a machine file');
+    landingBatchSize: false, landingCadenceMinutes: false,
+    'policy.verifierStanding': false, 'policy.selfVerify': true, 'policy.mainVerifier': false, 'policy.personChannel': false };
+  assert.deepEqual(JSON.parse(initial.out).lineSettings, defaults, 'every line control starts at its default, not silently enabled by a machine file');
   assert.equal(JSON.parse(changed.out).lineSettings.reviewsFirst, true);
   board = store.openBoard(join(box.repo, '.git', 'pullboard', 'board.sqlite'));
   replica = store.openBoard(join(box.dir, 'line-replay.sqlite'));

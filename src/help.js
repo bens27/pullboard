@@ -33,6 +33,11 @@ Set up
   pullboard settings line [<name> <value> --reason "why" --window <json>]  read or record board controller inputs; all off by default
       value is on, off, or a number within the setting range
                                         names: order, reviewsFirst, wipPerReviewer (1.5-3), barReady, bar.check, takeoverMinutes (15-60), collisionFreeBatch, landingBatchSize (1-8), landingCadenceMinutes (5-30)
+  pullboard settings policy              read the workflow policies; selfVerify starts on, the others off
+                                        set one: settings policy.<name> on|off --reason "why"
+                                        names: verifierStanding, selfVerify, mainVerifier, personChannel
+                                        with personChannel off, the coordinator records a person move it was told in the main checkout:
+                                        spec approve|decline|answer|signoff, check accept, sentinel approve|decline ... --for-person --note "<what the person said>"
   pullboard settings [gateSlots <n> | browserSlots <n> | gate.runnersFirst on|off]  view or set machine gate policy and capacity (gate default 2; browser default 1)
                                         browser-free check slots are opt-in: gate.browserFreeChecks in ~/.pullboard/settings.json (default false)
                                         a test file takes a browser slot only if it launches Chrome: gate.browserByLaunch (default false)

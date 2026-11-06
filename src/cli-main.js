@@ -54,6 +54,7 @@ const OPTIONS = {
   'no-permissions': { type: 'boolean' },
   'no-hooks': { type: 'boolean' },
   note: { type: 'string' },
+  'for-person': { type: 'boolean' },
   infra: { type: 'string' },
   'note-file': { type: 'string' },
   by: { type: 'string' },

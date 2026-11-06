@@ -1,3 +1,4 @@
+import { policyOn } from './policy-settings.js';
 import {
   agentAt,
   agentById,
@@ -173,6 +174,8 @@ export function withVerifierStanding(board, standing, work) {
 export function standingProblem(board, verifier, builder, itemId) {
   const standing = board.verifierStanding;
   if (!standing || (board.executionEngineVersion ?? ENGINE_VERSION) < VERIFIER_STANDING_ENGINE) return null;
+  // Read from ordered board state, so a replica replaying this verdict reaches the same answer.
+  if (!policyOn(board, 'verifierStanding')) return null;
   const refuse = (why) => new Refused('VERIFIER_STANDING',
     `${verifier} cannot verify work built by ${builder} on this linked board: ${why}; ask the coordinator to make an independent verifier from the main checkout: pullboard worktree <lane> --model "<model name>"`);
   if (builder === COORDINATOR) {
