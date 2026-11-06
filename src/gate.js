@@ -148,6 +148,11 @@ export function performanceCores() {
   return Math.max(1, availableParallelism());
 }
 
+/** Default file budget: two cores short of the detected budget, so the person's foreground apps keep headroom. */
+export function defaultTestFiles(cores = performanceCores()) {
+  return Math.max(1, cores - 2);
+}
+
 /** One policy for native file concurrency and the separate per-run browser-file limit. */
 export function testConcurrency(root, cores = performanceCores()) {
   const file = join(root, 'pullboard.json');
@@ -160,7 +165,7 @@ export function testConcurrency(root, cores = performanceCores()) {
   if (!setting || typeof setting !== 'object' || Array.isArray(setting)) {
     throw new Refused('BAD_CONFIG', 'testConcurrency must be an object with positive integer files and browser fields');
   }
-  const files = setting.files ?? cores;
+  const files = setting.files ?? defaultTestFiles(cores);
   const browser = setting.browser ?? 2;
   if (!Number.isSafeInteger(files) || files < 1 || !Number.isSafeInteger(browser) || browser < 1 || browser > 2) {
     throw new Refused('BAD_CONFIG', 'testConcurrency.files must be positive; testConcurrency.browser must be 1 or 2');

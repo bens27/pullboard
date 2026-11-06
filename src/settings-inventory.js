@@ -19,7 +19,7 @@ import {
   validateLineSetting,
 } from './queue-settings.js';
 import { loadMachineSettings } from './settings.js';
-import { performanceCores } from './gate.js';
+import { defaultTestFiles } from './gate.js';
 import {
   defaultViewPort,
   DEFAULT_VIEW_PORT,
@@ -145,7 +145,7 @@ function repositorySettings(rows, board) {
   const raw = readObject(file);
   const effective = loadConfig(info.root);
   const context = { scope: 'repo', board: board.id, root: info.root, file, raw, effective };
-  const supported = new Map([...leaves(defaults()), ...Object.entries(OPTIONAL_REPO_DEFAULTS), ['testConcurrency.files', performanceCores()]]);
+  const supported = new Map([...leaves(defaults()), ...Object.entries(OPTIONAL_REPO_DEFAULTS), ['testConcurrency.files', defaultTestFiles()]]);
   for (const [key, fallback] of supported) {
     const value = key === 'testConcurrency.browser' ? Math.min(effective.testConcurrency?.files ?? supported.get('testConcurrency.files'), effective.testConcurrency?.browser ?? 2) : at(effective, key);
     // Legacy scalar verify configures only policy; its synthesized siblings retain default provenance.

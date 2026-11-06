@@ -65,7 +65,9 @@ test('the landing gate bounds its own concurrency [C7]', () => {
   cpSync(resolve(import.meta.dirname, '../bin/run-tests.js'), join(root, 'bin/run-tests.js'));
   writeFileSync(join(root, 'package.json'), '{"type":"module"}\n');
   const config = join(root, 'pullboard.json');
-  assert.deepEqual(testConcurrency(root, 7), { files: 7, browser: 2 }, 'the default file budget is the detected core budget');
+  assert.deepEqual(testConcurrency(root, 7), { files: 5, browser: 2 }, 'the default file budget leaves two detected cores free');
+  assert.deepEqual(testConcurrency(root, 2), { files: 1, browser: 1 }, 'a small machine still runs one file at a time');
+  assert.deepEqual(testConcurrency(root, 1), { files: 1, browser: 1 }, 'the default never drops below one file');
   const selected = [];
   for (let id = 0; id < 9; id += 1) {
     const browser = id < 4;
