@@ -43,6 +43,13 @@ export function personNeeds(state) {
       text: `${row.id} is agent-approved; ${row.agentApproval.attribution}: ${row.agentApproval.agent}; commit ${row.agentApproval.commit ?? 'not committed'}`,
       what: 'confirm or decline this row', target: `spec:${row.id}`,
       actions: [{ verb: 'spec-approve', args: { ids: row.id } }, { verb: 'spec-decline', args: { ids: row.id } }] })),
+    // Precomputed on the board, so the page drops one a later delta has already moved on.
+    ...(state.personVerifies ?? []).filter(item => !state.items?.some(other => other.id === item.id && (other.status !== 'submitted' || other.commit !== item.commit))).map(item => ({ kind: 'verify', id: item.id,
+      ref: `#${item.id}`, text: `${item.title}: the coordinator built it, so no seat on this linked board may verify it`,
+      what: `verify #${item.id} at ${(item.commit ?? '').slice(0, 12)}, or have a seat from another machine verify it`, commit: item.commit, at: item.at, target: `item:${item.id}` })),
+    ...(state.signoffsDue ?? []).map(row => ({ kind: 'signoff', id: row.id, ref: row.id,
+      text: `${row.text} (verified: ${row.items.map(id => `#${id}`).join(', ')})`,
+      what: `pullboard spec signoff ${row.id} --note "<what you checked>"`, items: row.items, target: `spec:${row.id}` })),
     ...personBlocks(state.blocks ?? []),
     ...(drafts ? [{ kind: 'draft', id: 'drafts', count: drafts, ref: String(drafts),
       text: 'draft spec rows to approve or drop' + rows.filter(row => row.staleDecision).map(row => `; ${row.stage}`).join(''), what: 'review in SPEC.md', target: 'tab:spec' }] : []),
