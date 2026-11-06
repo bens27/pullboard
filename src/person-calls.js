@@ -11,7 +11,8 @@ import { withVerifierStanding } from './seats.js';
 import { readSignoffs, standings, unmetRows } from './spec.js';
 
 /**
- * Submitted items whose verdict only the person can give. On a linked board the relay refuses
+ * Submitted items whose verdict only the person can give. On a linked board with
+ * policy.verifierStanding on, the relay refuses
  * VERIFIER_STANDING to every seat of the building machine's lineage for work the coordinator
  * built, so a fresh seat made here cannot help; the item waits for the person or another
  * machine's seat. Each seat is judged by the same author and standing rule `next --verify`

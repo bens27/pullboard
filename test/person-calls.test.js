@@ -66,12 +66,19 @@ test('a coordinator-built item on a linked board waits for the person to verify 
   const board = store.openBoard(join(box.repo, '.git/pullboard/board.sqlite'));
   try {
     const items = store.listItems(board, { all: true });
+    assert.deepEqual(personVerifies(board, items, { linked: true }), [], 'with policy.verifierStanding off, a fresh seat here may verify the coordinator\'s work');
+  } finally { store.closeBoard(board); }
+  ran(box.repo, 'settings', 'policy.verifierStanding', 'on', '--reason', 'this board asks for relay standing');
+  const standing = store.openBoard(join(box.repo, '.git/pullboard/board.sqlite'));
+  try {
+    const board = standing;
+    const items = store.listItems(board, { all: true });
     assert.deepEqual(personVerifies(board, items, { linked: true }).map(item => item.id), [1],
       'every seat is refused the coordinator\'s work, while the web item has an independent verifier');
     assert.deepEqual(personVerifies(board, items, { linked: false }), [], 'unlinked, the coordinator can make an independent verifier');
     const needs = personNeeds({ personVerifies: personVerifies(board, items, { linked: true }) });
     assert.deepEqual(needs.map(need => [need.kind, need.ref]), [['verify', '#1']]);
-  } finally { store.closeBoard(board); }
+  } finally { store.closeBoard(standing); }
 });
 
 test('a row whose items are all verified waits for the person to sign it off [S5,B26]', async (t) => {
