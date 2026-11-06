@@ -84,18 +84,28 @@ test('the shipped view port stays fixed and malformed environment overrides are 
 });
 
 test('the suite runs while a view holds the default port [N26,C7]', async (t) => {
+  // A sandboxed stand-in answers for the shipped port, which the nested run sees as held through a preload,
+  // so the person's live view on that port is never bound or reached.
   const unrelated = createHttpServer((_request, response) => response.end('unrelated default listener'));
   t.after(() => unrelated.listening ? new Promise((done) => unrelated.close(done)) : undefined);
-  try {
-    await new Promise((ready, fail) => {
-      unrelated.once('error', fail);
-      unrelated.listen(DEFAULT_VIEW_PORT, '127.0.0.1', ready);
-    });
-  } catch (error) {
-    if (error.code !== 'EADDRINUSE') throw error;
-    // A person's already-running view is the exact regression condition. Never stop or replace it.
-    t.diagnostic('the default port was already occupied; its existing listener is left untouched');
-  }
+  await new Promise((ready, fail) => {
+    unrelated.once('error', fail);
+    unrelated.listen(0, '127.0.0.1', ready);
+  });
+  const held = pathToFileURL(resolve(import.meta.dirname, 'view-port-held.js')).href;
+  const heldEnv = {
+    ...process.env,
+    NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${held}`].filter(Boolean).join(' '),
+    PULLBOARD_TEST_HELD_VIEW_PORT: String(unrelated.address().port),
+  };
+  const probe = await runFixtureChildAsync(process.execPath, ['--input-type=module', '-e', `
+    import { createServer } from 'node:net';
+    import { get } from 'node:http';
+    createServer().once('error', e => {
+      get('http://127.0.0.1:${DEFAULT_VIEW_PORT}/', r => { let b = ''; r.on('data', d => b += d); r.on('end', () => console.log(e.code, b)); });
+    }).listen(${DEFAULT_VIEW_PORT}, '127.0.0.1', () => console.log('bound'));
+  `], { env: heldEnv, timeout: 20_000 });
+  assert.equal(probe.stdout.trim(), 'EADDRINUSE unrelated default listener', `the stand-in must hold the default port: ${probe.stderr}`);
   const names = [
     'view tests with separate private homes serialize the fixed loopback port',
     'pullboard view uses its fixed default port and reuses its authenticated listener',
@@ -104,7 +114,7 @@ test('the suite runs while a view holds the default port [N26,C7]', async (t) =>
   const result = await awaitNestedRun(runFixtureChildAsync(process.execPath, [
     resolve(import.meta.dirname, '../bin/run-tests.js'), '--test-name-pattern', names.join('|'),
     resolve(import.meta.dirname, 'view-port.test.js'), resolve(import.meta.dirname, 'resume-flow.test.js'),
-  ], { cwd: resolve(import.meta.dirname, '..'), env: { ...process.env } }));
+  ], { cwd: resolve(import.meta.dirname, '..'), env: heldEnv }));
   if (result.status !== 0) t.diagnostic(safeErrorSummary(result.stdout));
   assert.equal(result.status, 0, result.failure ?? result.stderr);
   for (const name of names) {
