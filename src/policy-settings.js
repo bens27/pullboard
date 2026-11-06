@@ -11,7 +11,7 @@ export const POLICY_SETTINGS = Object.freeze({
   mainVerifier: 'a verdict from the main checkout needs --as coordinator (MAIN_IS_COORDINATOR)',
   personChannel: 'person-only moves come only from the person\'s own terminal or view; off lets the coordinator record one for the person with --for-person --note (B26_PERSON_CHANNEL)',
   personTouchId: 'on a Mac, a spec, check or sentinel decision typed into an agent\'s terminal proceeds once the person confirms it with Touch ID, recorded with channel touchid (B26_PERSON_CHANNEL)',
-  personPhoneOnly: 'on a linked board, a person move goes only from the paired phone; off lets the person\'s own terminal or view on a Mac signed in with pullboard relay person on send it, after macOS asks them to allow it (HUMAN_REQUIRED)',
+  personPhoneOnly: 'on a linked board, a person move goes only from the paired phone; off lets the person\'s own terminal or view on a Mac signed in with pullboard relay person on send it, after one Touch ID fingerprint for that move (HUMAN_REQUIRED)',
 });
 
 /** The person's chosen defaults: an independent verifier stays on; the other policies start off. */

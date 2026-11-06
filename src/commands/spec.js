@@ -268,7 +268,7 @@ export async function specCommand(io, { first, second, rest, values }) {
       () => shownDecisionRows(ctx.info.root, ctx.config, ids));
     if (confirmed !== null) return confirmed;
       const sources = personSigning(board).signed ? shownDecisionRows(ctx.info.root, ctx.config, ids) : [];
-      const person = forPerson ? null : personChannelCheck(board, io.personChannel, { action: { command: `spec ${first}`, ids, ...(values.text === undefined ? {} : { text: values.text }) }, root: ctx.info.root });
+      const person = forPerson ? null : personChannelCheck(board, io.personChannel, { action: { command: `spec ${first}`, ids, ...(values.text === undefined ? {} : { text: values.text }) }, root: ctx.info.root, io: ctx.io });
       if (!ctx.info.isMain || me.id !== COORDINATOR) throw new Refused('B26_PERSON_APPROVAL', 'only the person from the main checkout approves or declines rows; use pullboard view for the person to decide');
       if (personSigning(board).signed) {
         const decidable = [...spec.rows, ...(practice.rows ?? []).map((row) => ({ ...row, id: `doctrine:${row.id}` }))];
@@ -339,7 +339,7 @@ export async function specCommand(io, { first, second, rest, values }) {
     return withBoard(ctx, async (board) => {
       const me = whoAmI(ctx, board);
       const forPerson = forPersonRequest(ctx, board, me.id, values, { signed: personSigning(board).signed });
-      const person = forPerson ? null : personChannelCheck(board, io.personChannel, { action: { command: 'spec answer', ids: [second], text: rest.join(' ').trim() }, command: relayed, root: ctx.info.root });
+      const person = forPerson ? null : personChannelCheck(board, io.personChannel, { action: { command: 'spec answer', ids: [second], text: rest.join(' ').trim() }, command: relayed, root: ctx.info.root, io: ctx.io });
       if (!ctx.info.isMain || me.id !== COORDINATOR) throw new Refused('B26_PERSON_APPROVAL', 'only the person answers a pending question, from the main checkout or the view', 'ask the person to answer it in pullboard view, or in their own terminal at the main checkout');
       const given = rest.join(' ').trim();
       if (!second || !given || /[\r\n|]/u.test(given)) throw new Refused('USAGE', 'give one row and a one-line answer without a field separator: pullboard spec answer <id> "<choice or text>"');

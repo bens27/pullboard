@@ -826,6 +826,9 @@ async function flushMirror(root, file, state, io) {
 /** A saved link is the opt-in boundary; unlinked callers neither read keys nor contact the relay. */
 export function relayLinked(root) { return Boolean(loadLink(linkFile(root))); }
 
+/** The relay origin this checkout is linked to, if any. */
+export function relayLinkOrigin(root) { return loadLink(linkFile(root))?.url; }
+
 /** Read validated View eligibility without decoding snapshots, opening a board or contacting the relay. */
 export function relayLinkAvailability(root) {
   const state = loadLink(linkFile(root));
@@ -1080,7 +1083,7 @@ export async function relayOperation(root, operation, args, io, command, applyLo
     if (state.recovery) throw new Refused('RELAY_RECOVERY_PENDING', `finish the saved recovery for sequence ${state.recovery.skip} before sending a linked move`);
     // A person move goes as the person: from the paired phone, or from this Mac once the person signed it in [B26].
     if (credentialActor({ operation, args, personRequest: io?.personRequest }) === 'person') {
-      await (await import('./relay-mac-person.js')).holdMacPersonSession({ root, state, args, io, localRecords, request });
+      await (await import('./relay-mac-person.js')).holdMacPersonSession({ root, state, operation, args, io, localRecords, request });
     }
     let moves = CHECKPOINT_MOVES.get(io);
     if (!moves) { moves = new Set(); CHECKPOINT_MOVES.set(io, moves); }
@@ -1485,8 +1488,8 @@ async function cancelDeviceFlow(url, ticket, io) {
 
 /**
  * Sign this Mac in for person moves on its linked boards [B26]: a GitHub sign-in the person makes in
- * their own terminal, kept only in the login keychain (src/relay-mac-person.js). `off` forgets it;
- * no argument reports whether one is kept, without asking macOS for it.
+ * their own terminal, kept sealed to a fingerprint-only Secure Enclave key (src/relay-mac-person.js). `off`
+ * forgets it; no argument reports whether one is kept, without asking for a fingerprint.
  */
 export async function relayPerson(root, action, address, io) {
   const mac = await import('./relay-mac-person.js');
@@ -1496,7 +1499,7 @@ export async function relayPerson(root, action, address, io) {
   if (io.personChannel === 'view') throw new Refused('B26_PERSON_CHANNEL', 'the person signs this Mac in from their own terminal: pullboard relay person on');
   requirePersonChannel(io.personChannel);
   if (action === 'off') return { relay: url, signedIn: false, forgotten: mac.forgetMacPersonSession(url) };
-  if (!mac.keychainAvailable()) throw new Refused('RELAY_KEYCHAIN', 'only a Mac login keychain keeps the person sign-in, and none is available here; send person moves from the paired phone');
+  if (!mac.macPersonAvailable()) throw new Refused('RELAY_KEYCHAIN', 'only a Mac with Touch ID keeps the person sign-in; send person moves from the paired phone');
   const signed = await deviceSignIn(url, io);
   try { mac.storeMacPersonSession(url, signed.token); }
   catch (error) {

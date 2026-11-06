@@ -136,7 +136,7 @@ export async function checkAcceptCommand(io, first, rest, { context, withBoard, 
   const ctx = context(io);
   return withBoard(ctx, async (board) => {
     const forPerson = forPersonRequest(ctx, board, whoAmI(ctx, board).id, values);
-    const person = forPerson ? null : personChannelCheck(board, io.personChannel, { action: { command: 'check accept', ids: [`#${String(first).replace(/^#/u, '')}`] }, root: ctx.info.root });
+    const person = forPerson ? null : personChannelCheck(board, io.personChannel, { action: { command: 'check accept', ids: [`#${String(first).replace(/^#/u, '')}`] }, root: ctx.info.root, io: ctx.io });
     if (!ctx.info.isMain || whoAmI(ctx, board).id !== COORDINATOR) throw new Refused('B26_PERSON_APPROVAL', 'only the person accepts a check, from the main checkout or the view', 'ask the person to accept it in pullboard view, or in their own terminal at the main checkout');
     const item = getItem(board, idArg(first));
     if (!item.item_check) throw new Refused('NO_CHECK', `#${item.item_id} has no check command to accept; its proof is the project gate: pullboard gate`);

@@ -68,7 +68,7 @@ Set up
   pullboard relay members set <login> [<login> ...] | clear  publish an approver-signed membership list
   pullboard relay pair --new-browser    sign in and pair one more browser; existing browsers stay paired
   pullboard relay person [on|off|status]  sign this Mac in for person moves on linked boards, from the person's own terminal;
-                                        the GitHub sign-in stays in the login keychain and macOS asks before each person move uses it
+                                        the GitHub sign-in stays sealed to a Touch ID key; each person move takes one fingerprint
   pullboard relay canary [on|off|status|run|watch]  opt this linked seat into minute sealed round-trip monitoring
   pullboard relay on --all [--url <address>] [--name <computer>]  link every registered project after one sign-in; pair the phone once
                                         keep this command open until pairing finishes; later projects link on registration

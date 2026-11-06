@@ -94,7 +94,7 @@ export async function sentinelCommand({ ctx, words, values, withBoard, whoAmI, o
       const forPerson = forPersonRequest(ctx, board, me.id, values);
       const confirmed = await requireSignedPerson(ctx, board, me, { verb: `sentinel-${verb}`, args: { name, digest, ...(verb === 'decline' ? { reason: String(values.reason ?? '') } : {}) } });
       if (confirmed !== null) return confirmed;
-      const channel = forPerson?.channel ?? await personChannelFor(board, ctx.io.personChannel, { action: { command: `sentinel ${verb}`, ids: [name] }, root: ctx.info.root });
+      const channel = forPerson?.channel ?? await personChannelFor(board, ctx.io.personChannel, { action: { command: `sentinel ${verb}`, ids: [name] }, root: ctx.info.root, io: ctx.io });
       row = await ordered(ctx, board, 'decideSentinel', [{ agentId: PERSON, channel,
         name, digest, decision: verb, reason: (values.reason ?? '').trim(), ...(forPerson ? { note: forPerson.note } : {}) }]);
       if (forPerson) ctx.io.say(`recorded by the coordinator for the person: ${forPerson.note}`);
