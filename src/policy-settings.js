@@ -10,10 +10,11 @@ export const POLICY_SETTINGS = Object.freeze({
   selfVerify: 'an earlier claimer, or a seat of the builder\'s agent session, never verifies the item; the building seat never does whatever the policy (SELF_VERIFY, SELF_SESSION_VERIFY)',
   mainVerifier: 'a verdict from the main checkout needs --as coordinator (MAIN_IS_COORDINATOR)',
   personChannel: 'person-only moves come only from the person\'s own terminal or view; off lets the coordinator record one for the person with --for-person --note (B26_PERSON_CHANNEL)',
+  personPhoneOnly: 'on a linked board, a person move goes only from the paired phone; off lets the person\'s own terminal or view on a Mac signed in with pullboard relay person on send it, after macOS asks them to allow it (HUMAN_REQUIRED)',
 });
 
 /** The person's chosen defaults: an independent verifier stays on; the other policies start off. */
-export const POLICY_DEFAULTS = Object.freeze({ verifierStanding: false, selfVerify: true, mainVerifier: false, personChannel: false });
+export const POLICY_DEFAULTS = Object.freeze({ verifierStanding: false, selfVerify: true, mainVerifier: false, personChannel: false, personPhoneOnly: false });
 
 /** The board_meta key a policy's line setting is stored under. */
 export function policyKey(name) { return `policy.${name}`; }

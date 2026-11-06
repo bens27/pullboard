@@ -1078,8 +1078,9 @@ export async function relayOperation(root, operation, args, io, command, applyLo
     if (!state && deletedRecovery(root)) return deletedMoveResult(root, operation, args, command, io, applyPausedMoveLocally);
     if (!state || state.unlinking) throw new Refused('RELAY_UNLINK_PENDING', 'finish unlinking this device with pullboard relay off before sending a move');
     if (state.recovery) throw new Refused('RELAY_RECOVERY_PENDING', `finish the saved recovery for sequence ${state.recovery.skip} before sending a linked move`);
+    // A person move goes as the person: from the paired phone, or from this Mac once the person signed it in [B26].
     if (credentialActor({ operation, args, personRequest: io?.personRequest }) === 'person') {
-      throw new Refused('HUMAN_REQUIRED', 'send this person action from the paired phone');
+      await (await import('./relay-mac-person.js')).holdMacPersonSession({ root, state, args, io, localRecords, request });
     }
     let moves = CHECKPOINT_MOVES.get(io);
     if (!moves) { moves = new Set(); CHECKPOINT_MOVES.set(io, moves); }
@@ -1480,6 +1481,29 @@ async function cancelDeviceFlow(url, ticket, io) {
     throw new Refused('OAUTH_CLEANUP', 'the relay could not confirm cleanup of the cancelled sign-in; retry before linking boards');
   }
   if (result.cancelled !== true) throw new Refused('OAUTH_CLEANUP', 'the relay did not confirm cleanup of the cancelled sign-in; retry before linking boards');
+}
+
+/**
+ * Sign this Mac in for person moves on its linked boards [B26]: a GitHub sign-in the person makes in
+ * their own terminal, kept only in the login keychain (src/relay-mac-person.js). `off` forgets it;
+ * no argument reports whether one is kept, without asking macOS for it.
+ */
+export async function relayPerson(root, action, address, io) {
+  const mac = await import('./relay-mac-person.js');
+  const state = loadLink(linkFile(root));
+  const url = relayOrigin(address || state?.url || DEFAULT_RELAY);
+  if (!action || action === 'status') return { relay: url, signedIn: mac.macPersonSignedIn(url) };
+  if (io.personChannel === 'view') throw new Refused('B26_PERSON_CHANNEL', 'the person signs this Mac in from their own terminal: pullboard relay person on');
+  requirePersonChannel(io.personChannel);
+  if (action === 'off') return { relay: url, signedIn: false, forgotten: mac.forgetMacPersonSession(url) };
+  if (!mac.keychainAvailable()) throw new Refused('RELAY_KEYCHAIN', 'only a Mac login keychain keeps the person sign-in, and none is available here; send person moves from the paired phone');
+  const signed = await deviceSignIn(url, io);
+  try { mac.storeMacPersonSession(url, signed.token); }
+  catch (error) {
+    try { await revokeRelayPersonSession({ ...signed, url }, io); } catch { /* The refusal below names the next step either way. */ }
+    throw error;
+  }
+  return { relay: url, signedIn: true, expires: new Date(signed.expires).toISOString() };
 }
 
 /** Revoke only the fresh person session created by this explicit device sign-in. */

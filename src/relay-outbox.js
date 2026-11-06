@@ -20,6 +20,7 @@ import {
   gzipSync,
 } from 'node:zlib';
 import * as store from './board.js';
+import { heldPersonSession } from './relay-mac-person.js';
 import {
   engineReceipt,
   executableArgs,
@@ -340,6 +341,8 @@ export function outboxQueueable(state, error, operation, io, args = []) {
   return state.mode === 'ordered' && state.baselineAccepted === true && !state.baselineConflict && !state.environment
     && process.env.PULLBOARD_RELAY_TOKEN === undefined && !io?.relayCanary && !io?.personRequest && !io?.personRequestMoveId
     && !ACKNOWLEDGED_OPERATIONS.includes(operation)
+    // A person move from this Mac waits for the relay: a later command must never send it with the person's session.
+    && !heldPersonSession(io)
     && !args.some(arg => arg?.landingFence !== undefined) && transientRelayFailure(error) && outboxEnabled(io);
 }
 

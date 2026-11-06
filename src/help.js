@@ -35,7 +35,7 @@ Set up
                                         names: order, reviewsFirst, wipPerReviewer (1.5-3), barReady, bar.check, takeoverMinutes (15-60), collisionFreeBatch, landingBatchSize (1-8), landingCadenceMinutes (5-30)
   pullboard settings policy              read the workflow policies; selfVerify starts on, the others off
                                         set one: settings policy.<name> on|off --reason "why"
-                                        names: verifierStanding, selfVerify, mainVerifier, personChannel
+                                        names: verifierStanding, selfVerify, mainVerifier, personChannel, personPhoneOnly
                                         with personChannel off, the coordinator records a person move it was told in the main checkout:
                                         spec approve|decline|answer|signoff, check accept, sentinel approve|decline ... --for-person --note "<what the person said>"
   pullboard settings [gateSlots <n> | browserSlots <n> | gate.runnersFirst on|off]  view or set machine gate policy and capacity (gate default 2; browser default 1)
@@ -66,6 +66,8 @@ Set up
                                         pair prints a one-use machine code; join stores it in another clone
   pullboard relay members set <login> [<login> ...] | clear  publish an approver-signed membership list
   pullboard relay pair --new-browser    sign in and pair one more browser; existing browsers stay paired
+  pullboard relay person [on|off|status]  sign this Mac in for person moves on linked boards, from the person's own terminal;
+                                        the GitHub sign-in stays in the login keychain and macOS asks before each person move uses it
   pullboard relay canary [on|off|status|run|watch]  opt this linked seat into minute sealed round-trip monitoring
   pullboard relay on --all [--url <address>] [--name <computer>]  link every registered project after one sign-in; pair the phone once
                                         keep this command open until pairing finishes; later projects link on registration

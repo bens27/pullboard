@@ -31,6 +31,7 @@ import {
 import {
   relayOff,
   relayOn,
+  relayPerson,
   relayMachineContext,
   relayRecover,
   relayRevoke,
@@ -81,6 +82,15 @@ export async function run(io, { first, second, rest, values }) {
     return 0;
   }
   if (values.skip) throw new Refused('USAGE', '--skip is only valid with pullboard relay recover');
+  if (first === 'person') {
+    if ((second && !['on', 'off', 'status'].includes(second)) || rest.length || values.all) throw new Refused('USAGE', 'pullboard relay person [on|off|status] [--url <address>]');
+    const result = await relayPerson(context(io).info.root, second, values.url, io);
+    io.result?.(result);
+    io.say(result.signedIn
+      ? `this Mac is signed in for person moves on ${result.relay}${result.expires ? ` until ${result.expires}` : ''}; macOS asks you to allow each one`
+      : `this Mac is not signed in for person moves on ${result.relay}${result.forgotten ? '; the kept sign-in was forgotten' : ''}`);
+    return 0;
+  }
   if (first === 'devices') {
     if (second || rest.length || values.url || values.all) throw new Refused('USAGE', 'pullboard relay devices [--verbose]');
     const roster = await relayRoster({ verbose: values.verbose });

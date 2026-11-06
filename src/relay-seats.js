@@ -14,6 +14,7 @@ import {
   VERIFIER_STANDING_ENGINE,
 } from './machine.js';
 import { Refused } from './refused.js';
+import { heldPersonSession } from './relay-mac-person.js';
 import {
   localRecords,
   request,
@@ -119,7 +120,11 @@ export async function actorTransport(root, file, state, actor, io) {
     throw new Refused('RELAY_ACTOR', 'name the registered agent performing this move before sending it');
   }
   if (actor === 'person') {
-    throw new Refused('HUMAN_REQUIRED', 'send this person action from the paired phone');
+    // Only the command whose person move this Mac's person allowed holds their session (src/relay-mac-person.js).
+    const session = heldPersonSession(io);
+    if (!session) throw new Refused('HUMAN_REQUIRED', 'send this person action from the paired phone');
+    const { agent: _agent, ...transport } = state;
+    return { ...transport, token: session };
   }
   if (actor === 'machine') {
     if (!state.token?.startsWith('pm_')) throw new Refused('HUMAN_REQUIRED', 'run pullboard relay on --all to authorize this board’s machine credential');
