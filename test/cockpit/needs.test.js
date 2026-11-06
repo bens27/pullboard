@@ -685,6 +685,38 @@ test('a sentinel draft in Needs you is approved and declined from the view [N26,
       assert.match(row.text, /coordinator/u, 'the person sees the owner');
     }
 
+    // B26: each field keeps its own box and the controls sit in their own row below the fields, at a
+    // desktop width, a narrow window and a phone; the shot showed Approve drawn over the owner.
+    for (const width of [1280, 700, 320]) {
+      await chrome.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+      await chrome.waitFor(`innerWidth === ${width}`);
+      const layout = JSON.parse(await chrome.stable(`JSON.stringify((() => {
+        const row = document.querySelector('[data-sentinel-draft="approve-watch"]');
+        const box = (node) => { const r = node.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, text: node.textContent.trim().slice(0, 40) }; };
+        const labels = ['Command', 'Directory', 'Schedule', 'Owner'];
+        const fields = [...row.querySelectorAll('.sentinel-fields > dd')].map(box);
+        const terms = [...row.querySelectorAll('.sentinel-fields > dt')].map(box);
+        const actions = row.querySelector('.sentinel-decision-actions');
+        const buttons = [...row.querySelectorAll('button')].map(box);
+        return { width: innerWidth, terms, fields, buttons, actions: actions && box(actions), labels,
+          rowBox: box(row), overflow: document.documentElement.scrollWidth - innerWidth };
+      })())`));
+      const where = ' at ' + width + 'px: ' + JSON.stringify(layout);
+      assert.deepEqual(layout.terms.map((term) => term.text.replace(/:$/u, '')), layout.labels, 'each field has its own label' + where);
+      assert.equal(layout.fields.length, 4, 'each field has its own value' + where);
+      const overlaps = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+      const parts = [...layout.terms, ...layout.fields, ...layout.buttons];
+      for (let i = 0; i < parts.length; i++) {
+        for (let j = i + 1; j < parts.length; j++) assert.ok(!overlaps(parts[i], parts[j]), 'no two parts of the card overlap: ' + parts[i].text + ' / ' + parts[j].text + where);
+      }
+      assert.ok(layout.actions, 'the controls have their own container' + where);
+      const lastField = Math.max(...layout.fields.map((field) => field.bottom), ...layout.terms.map((term) => term.bottom));
+      assert.ok(layout.actions.top >= lastField - 0.5, 'the controls sit below every field' + where);
+      for (const part of [...parts, layout.actions]) assert.ok(part.left >= layout.rowBox.left - 0.5 && part.right <= layout.rowBox.right + 0.5, 'the card holds its contents: ' + part.text + where);
+      assert.ok(layout.overflow <= 0, 'the page never scrolls sideways' + where);
+    }
+    await chrome.send('Emulation.clearDeviceMetricsOverride', {});
+
     await chrome.click(`document.querySelector('[data-sentinel-draft="approve-watch"] [data-sentinel-decision="approve"]')`);
     await chrome.waitFor('document.querySelector(\'[data-sentinel-draft="approve-watch"]\') === null');
     let recorded = JSON.parse(box.run(alpha.repo, 'sentinels', '--json')).sentinels;

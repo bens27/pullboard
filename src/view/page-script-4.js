@@ -474,11 +474,14 @@ function sentinelDraftRow(row) {
   const repeats = evidence ? 'Drafted from ' + evidence.occurrences + (evidence.occurrences === 1 ? ' repeat of ' : ' repeats of ') + evidence.key + (evidence.items.length ? ' on ' + evidence.items.map((item) => '#' + item.id).join(', ') : '') + '.' : 'Proposed by an agent with no repeat cited.';
   const canDecide = !snapshot && (!readOnly || requests);
   const actions = canDecide ? '<div class="sentinel-decision-actions"><button class="approve-row" data-sentinel-decision="approve" data-sentinel-name="' + esc(row.ref) + '" data-sentinel-digest="' + esc(row.digest) + '" type="button">Approve</button><button class="decline-row" data-sentinel-decision="decline" data-sentinel-name="' + esc(row.ref) + '" data-sentinel-digest="' + esc(row.digest) + '" type="button">Decline</button></div>' : '';
-  return '<li class="row ask" data-sentinel-draft="' + esc(row.ref) + '"><span class="dot ask"></span><div><div class="t"><span>' + esc(row.ref) + '</span>' + esc(row.text) + '</div>'
-    + '<div class="muted sentinel-proof">' + esc(repeats + (proof ? ' ' + proof : '')) + '</div>'
-    + '<div class="muted">Command: <code>' + esc(row.check) + '</code></div><div class="muted">Directory: ' + esc(row.directory) + '</div>'
-    + '<div class="muted">Schedule: ' + esc(row.every) + '</div><div class="muted">Owner: ' + esc(row.owner) + '</div>'
-    + '<div class="meta"><span class="why"><b>NEEDS YOU</b> a sentinel draft awaiting your approval, not watching yet</span></div>' + actions + '</div><span class="chip warn">Approve or Decline</span></li>';
+  const field = (label, value) => '<dt>' + label + ':</dt><dd>' + value + '</dd>';
+  // The fields and controls share one block under the row's two lines, so the row's grid cannot scatter them.
+  return '<li class="row ask sentinel-draft" data-sentinel-draft="' + esc(row.ref) + '"><span class="dot ask"></span><div><div class="t"><span>' + esc(row.ref) + '</span>' + esc(row.text) + '</div>'
+    + '<div class="meta"><span class="why"><b>NEEDS YOU</b> a sentinel draft awaiting your approval, not watching yet</span></div>'
+    + '<div class="sentinel-body"><div class="muted sentinel-proof">' + esc(repeats + (proof ? ' ' + proof : '')) + '</div>'
+    + '<dl class="sentinel-fields">' + field('Command', '<code>' + esc(row.check) + '</code>') + field('Directory', esc(row.directory))
+    + field('Schedule', esc(row.every)) + field('Owner', esc(row.owner)) + '</dl>'
+    + actions + '</div></div><span class="chip warn">Approve or Decline</span></li>';
 }
 
 /** One blueprint fit proposal: its decision, its new text or reason, and where it came from. */

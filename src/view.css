@@ -844,6 +844,14 @@ code.inline.long { white-space: break-spaces; overflow-wrap: anywhere; }
 .needs[hidden] { display: none; }
 .dot.ask { background: var(--warn); }
 .row.ask .meta .why { color: var(--warn); }
+.row.sentinel-draft { grid-template-areas: "dot t age" "dot meta chip" ". body body"; cursor: default; }
+.sentinel-body { grid-area: body; min-width: 0; display: grid; gap: 8px; margin-top: 4px; font-size: 12px; }
+.sentinel-fields { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; color: var(--ink-muted); }
+.sentinel-fields dt { margin: 0; }
+.sentinel-fields dd { margin: 0; min-width: 0; color: var(--ink); overflow-wrap: anywhere; }
+/* A long command wraps inside its own block instead of running under the next field. */
+.sentinel-fields code { display: block; padding: 3px 6px; border-radius: 6px; background: var(--surface-2); font: 12px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sentinel-decision-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 /* Shouts is one card: the composer's line at its head with the asks and Show agents at its end, then the asks once
  * opened, as a tinted group set apart from the feed, then the feed. */
 .shouts-card { display: grid; min-width: 0; padding: 0; }
