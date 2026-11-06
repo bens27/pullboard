@@ -4,6 +4,7 @@ import { existsSync, lstatSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
+import { spawnSync } from 'node:child_process';
 import { relayClientFixture, relayFixtureChild } from './relay-client-fixture.js';
 
 const CLI = resolve(import.meta.dirname, '../bin/pullboard.js');
@@ -172,4 +173,37 @@ test('Touch ID in an agent terminal on a linked board sends the move with exactl
   const phoneOnly = await relayFixtureChild(box.root, agentEnv, [CLI, 'spec', 'decline', 'G1', '--reason', 'changed my mind', '--json']);
   assert.equal(phoneOnly.document.error?.code, 'HUMAN_REQUIRED', 'policy.personPhoneOnly keeps it on the phone');
   assert.equal(touch.calls().length, opens, 'no helper call while the board keeps person moves on the phone');
+});
+
+test('spec signoff in an agent terminal waits for one fingerprint naming the rows, like approve [B26,H16]', async (t) => {
+  const box = await relayClientFixture(t);
+  const touch = fakeTouchId(box);
+  await box.link();
+  writeFileSync(join(box.root, 'SPEC.md'), SPEC.replace('[draft, must]', '[approved, must]'));
+  writeFileSync(join(box.root, 'g1.test.js'), '// proves G1 for the sign-off fixture [G1]\n');
+  assert.equal(spawnSync('git', ['add', 'g1.test.js'], { cwd: box.root, env: box.env }).status, 0);
+  const agentEnv = { ...box.env, CLAUDECODE: '1' };
+  const signoffs = join(box.root, '.pullboard', 'signoffs.jsonl');
+  const signoff = () => relayFixtureChild(box.root, agentEnv, [CLI, 'spec', 'signoff', 'G1', '--by', 'CO', '--note', 'checked', '--json']);
+
+  const off = await signoff();
+  assert.equal(off.document.error?.code, 'B26_PERSON_CHANNEL', 'with policy.personTouchId off an agent terminal is refused');
+  assert.equal(touch.calls().length, 0, 'and no prompt was shown');
+
+  assert.equal((await box.cli('relay', 'person', 'on')).code, 0);
+  assert.equal((await box.cli('settings', 'policy.personTouchId', 'on', '--reason', 'the person signs off from agent terminals')).code, 0);
+  touch.decline(true);
+  const declined = await signoff();
+  assert.equal(declined.document.error?.code, 'B26_PERSON_CHANNEL', 'a declined fingerprint refuses');
+  assert.equal(existsSync(signoffs), false, 'a declined fingerprint records no sign-off');
+  touch.decline(false);
+
+  const before = touch.calls().length;
+  const signed = await signoff();
+  assert.equal(signed.code, 0, `a fingerprint lets the agent terminal sign off: ${JSON.stringify(signed.document)}`);
+  assert.deepEqual(touch.calls().slice(before).map((call) => call.args), [['open', 'Pullboard: sign off spec rows G1 (pullboard spec signoff)']],
+    'exactly one helper call, prompting with the move and its ids');
+  assert.match(readFileSync(signoffs, 'utf8'), /"id":"G1"/u);
+  // The sign-off's own snapshot upload finishes inside this bounded run, before the fixture's cleanup.
+  assert.equal((await box.cli('status')).code, 0);
 });

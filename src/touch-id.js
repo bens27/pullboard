@@ -143,6 +143,7 @@ export function touchIdReason({ command, ids = [], text }) {
     'spec approve': 'approve spec rows',
     'spec decline': 'decline spec rows',
     'spec answer': 'answer spec question',
+    'spec signoff': 'sign off spec rows',
     'check accept': 'accept the check of item',
     'sentinel approve': 'approve sentinel',
     'sentinel decline': 'decline sentinel',

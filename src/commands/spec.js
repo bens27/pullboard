@@ -540,8 +540,9 @@ export async function specCommand(io, { first, second, rest, values }) {
   }
   if (first === 'signoff') {
     const forPerson = values['for-person'] ? withBoard(ctx, (board) => forPersonRequest(ctx, board, whoAmI(ctx, board).id, values)) : null;
-    if (!forPerson) requirePersonChannel(io.personChannel);
     const ids = [second, ...rest].filter(Boolean).flatMap((text) => idList(text));
+    const relayed = personCommand(primaryCheckoutRoot(ctx.info) ?? ctx.info.root, ['spec', 'signoff', ...ids]);
+    if (!forPerson) requirePersonChannelOrTouchId(io.personChannel, () => touchIdPolicyAt(ctx), { command: relayed });
     if (!ids.length) throw new Refused('USAGE', 'pullboard spec signoff <ids> [--by <principal>] [--note "what was checked"]');
     const invalid = ids.filter((id) => spec.rows.find((row) => row.id === id)?.status !== 'approved');
     if (invalid.length) throw new Refused('CANNOT_SIGN', `${invalid.join(', ')}: only approved rows in this spec are signed`);
@@ -557,6 +558,8 @@ export async function specCommand(io, { first, second, rest, values }) {
       for (const item of row.verified) io.say(`  verified #${item.id}: ${item.note || '(no accepting note)'}`);
     }
     const note = forPerson ? forPerson.note : textArg(io, values, 'note') ?? '';
+    // Like approve and answer, an agent terminal signs only after the person's fingerprint names these rows.
+    if (!forPerson) await withBoard(ctx, (board) => personChannelCheck(board, io.personChannel, { action: { command: 'spec signoff', ids }, command: relayed, root: ctx.info.root, io: ctx.io }).confirm());
     // A for-person sign-off names the coordinator as its recorder; it is never signed with the person's key.
     const by = forPerson ? forPerson.by : values.by ?? (hasSignerFile(ctx.info.root) ? defaultPrincipal(ctx.info.root) : '');
     const count = signOff(ctx.info.root, spec, { ids, by, on: new Date().toISOString(), note, commit: headCommit(ctx.info.root) ?? '', forPerson: Boolean(forPerson) });
