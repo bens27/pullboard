@@ -65,6 +65,7 @@ import { Refused } from './refused.js';
 import { refusalDocument } from './json.js';
 import { relayLinkAvailability } from './relay.js';
 import { personNeeds } from './needs.js';
+import { personVerifies, relayLinkedQuietly, signoffsDue } from './person-calls.js';
 import { rigorDraftNeeds } from './rigor-notices.js';
 import { sentinelDraftNeeds } from './sentinels.js';
 import { sentinels } from './sentinels.js';
@@ -380,8 +381,10 @@ export function projectState(root, { seen = null, board: providedBoard = null, i
       products: productSummaries(config, loadSpec(info.root, config), all),
     });
     // Pending person decisions govern the calls on the API, sealed relay and exported page alike.
-    const rigorRows = projectRowDecisions(store.rowDecisions(board), { root: info.root, spec: loadSpec(info.root, config).rows, practice: doctrine.rows });
-    const projected = projectSpecRevisions({ ...state, rigorDrafts: rigorDraftNeeds(rigorRows, store.rowDrafts(board), store.rowDecisions(board)), sentinelDrafts: sentinelDraftNeeds(sentinels(board)) }, store.rowDrafts(board), store.rowDecisions(board));
+    const specRows = loadSpec(info.root, config).rows;
+    const rigorRows = projectRowDecisions(store.rowDecisions(board), { root: info.root, spec: specRows, practice: doctrine.rows });
+    const personCalls = { personVerifies: personVerifies(board, all, { linked: relayLinkedQuietly(info.root) }), signoffsDue: signoffsDue(info.root, specRows, all) };
+    const projected = projectSpecRevisions({ ...state, ...personCalls, rigorDrafts: rigorDraftNeeds(rigorRows, store.rowDrafts(board), store.rowDecisions(board)), sentinelDrafts: sentinelDraftNeeds(sentinels(board)) }, store.rowDrafts(board), store.rowDecisions(board));
     return { ...projected, needs: personNeeds(projected) };
   }, providedBoard);
 }

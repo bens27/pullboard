@@ -444,10 +444,11 @@ function recordRow({ tag = 'li', classes = '', attributes, title, state, primary
 const count = (n, one, many = one) => n + ' ' + (n === 1 ? one : many);
 // What needs the person in a project, as its Needs-you list counts it: only the person's calls (B26),
 // the decisions passed up to them, spec rows waiting for them, and held lanes, which only the main
-// checkout, the person's seat, can set. Work waiting for a verdict or sent back belongs to the agents,
-// and the line under the project says so without counting it.
-const needCount = (x) => x.ok && !x.loading ? x.decisions + x.pending + x.drafts + x.holds : 0;
-const doing = (x) => [x.decisions && count(x.decisions, 'decision', 'decisions'), x.pending && count(x.pending, 'question', 'questions'), x.drafts && count(x.drafts, 'draft row', 'draft rows'), x.holds && count(x.holds, 'lane held', 'lanes held'), x.sentBack && count(x.sentBack, 'sent back'), x.awaiting && count(x.awaiting, 'to verify'), x.building && count(x.building, 'building')].filter(Boolean).join(' · ') || (x.open ? count(x.open, 'item open', 'items open') : 'nothing open');
+// checkout, the person's seat, can set, plus a verdict no seat may give and a row ready to sign.
+// Other work waiting for a verdict or sent back belongs to the agents, and the line under the
+// project says so without counting it.
+const needCount = (x) => x.ok && !x.loading ? x.decisions + x.pending + x.drafts + x.holds + (x.verifies ?? 0) + (x.signoffs ?? 0) : 0;
+const doing = (x) => [x.decisions && count(x.decisions, 'decision', 'decisions'), x.pending && count(x.pending, 'question', 'questions'), x.drafts && count(x.drafts, 'draft row', 'draft rows'), x.holds && count(x.holds, 'lane held', 'lanes held'), x.verifies && count(x.verifies, 'verdict only you can give', 'verdicts only you can give'), x.signoffs && count(x.signoffs, 'row to sign off', 'rows to sign off'), x.sentBack && count(x.sentBack, 'sent back'), x.awaiting && count(x.awaiting, 'to verify'), x.building && count(x.building, 'building')].filter(Boolean).join(' · ') || (x.open ? count(x.open, 'item open', 'items open') : 'nothing open');
 // Embed the standalone shared builder for every page; the binding also lets the page fixture substitute its output.
 let personNeeds = (${personNeeds.toString()});
 /** The person's calls in one repo, reused by a combined project view. */

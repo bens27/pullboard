@@ -90,6 +90,8 @@ function boardSummary(board, state) {
     holds: calls('hold'),
     laneHolds: state.holds,
     decisions: calls('decision'),
+    verifies: calls('verify'),
+    signoffs: calls('signoff'),
     // What each item's state reads from, so another repo's roadmap can show it as this board's
     // Items tab does, sent back included, and open it here.
     items: state.items.map((item) => listFields(item)),
