@@ -4,6 +4,7 @@ import { withBoardRead } from '../cli-board-read.js';
 /** The pullboard status command, in its own module so an item adding another command never edits these lines. */
 import * as store from '../board-query.js';
 import { personNeedsSummary } from '../needs-summary.js';
+import { relayLinkedQuietly } from '../signoffs-due.js';
 import { identifyCaller } from '../cli-read-context.js';
 import { relayStateExists } from '../local-state.js';
 import { unlinkedRelayStatus } from '../relay-status-fields.js';
@@ -50,7 +51,9 @@ export async function run(io, { values }) {
     const agents = store.listAgents(board);
     const presenceCounts = { live: 0, idle: 0, gone: 0 };
     for (const seat of agents) presenceCounts[seat.presence] += 1;
-    const approvalState = personNeedsSummary(ctx.info.root, { board, config: ctx.config, agents });
+    // Only a linked board can hold a verdict no seat may give; the check behind it loads the board writer [C7].
+    const personVerifies = relayLinkedQuietly(ctx.info.root) ? (await import('../person-calls.js')).personVerifies : undefined;
+    const approvalState = personNeedsSummary(ctx.info.root, { board, config: ctx.config, agents, personVerifies });
     const person = board.db.prepare("SELECT 1 FROM event WHERE event_kind='person_signing' LIMIT 1").get()
       ? { signed: (await import('../person-signing.js')).personSigning(board).signed } : { signed: false };
     return { me, mine, person, agents, presenceCounts, ruleCounts: ruleProofCounts(ctx.info.root, board, approvalState.spec), needs: approvalState.needs, specApprovalBaseline: approvalState.specApprovalBaseline, specApprovalEvidenceErrors: approvalState.specApprovalEvidenceErrors, stats: store.stats(board), reviewQueue: { ...store.reviewQueue(board), ...store.reviewQueueBreakdown(board) }, unread: store.unreadCount(board, me.id), relay: relay ? relay.relayStatus(ctx.info.root) : unlinkedRelayStatus(),

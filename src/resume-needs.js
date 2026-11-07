@@ -5,11 +5,12 @@ import { projectFit } from './blueprint-fit.js';
 import { repoInfo } from './git.js';
 import { personNeedsSummary } from './needs-summary.js';
 import { personNeeds } from './needs.js';
+import { personVerifies } from './person-calls.js';
 import { resumeRigorCounters } from './rigor-counters.js';
 
 /** Extend the indexed summary only for resume; retain exact row decisions, fit and coordinator Rigor. */
 export function resumeNeeds(root, { board, config, includeRigorUndrafted = false }) {
-  const summary = personNeedsSummary(root, { board, config });
+  const summary = personNeedsSummary(root, { board, config, personVerifies });
   // Resume consumes obligations, not dashboard items. Fit still decorates every current spec row.
   const fitted = projectFit(pendingFit(repoInfo(root).commonDir), { ...summary, items: [] });
   const rigor = includeRigorUndrafted ? resumeRigorCounters(board, summary, { person: store.PERSON,
