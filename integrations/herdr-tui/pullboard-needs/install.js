@@ -7,7 +7,18 @@
  * Usage: install.sh [--root <board dir>] [--key <binding>] [--dry-run]
  */
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
@@ -56,6 +67,10 @@ export function planPlugins(current, entry) {
 }
 
 const normalize = (key) => key.toLowerCase().replaceAll(' ', '');
+// A TOML value as a basic "..." or a literal '...' string; either can bind a key.
+const VALUE = String.raw`\s*=\s*(?:"([^"]*)"|'([^']*)')`;
+const OWN = new RegExp(String.raw`^\s*(\w+)${VALUE}`, 'u');
+const BOUND = new RegExp(String.raw`^\s*key${VALUE}`, 'u');
 
 function withoutBlock(text) {
   const start = text.indexOf(BEGIN);
@@ -85,10 +100,10 @@ export function takenKeys(config, defaults) {
   inKeys = false;
   for (const line of config.split('\n')) {
     if (/^\s*\[/u.test(line)) inKeys = /^\s*\[keys\]\s*$/u.test(line);
-    const own = inKeys && line.match(/^\s*(\w+)\s*=\s*"([^"]*)"/u);
-    if (own) named.set(own[1], own[2]);
-    const bound = line.match(/^\s*key\s*=\s*"([^"]*)"/u);
-    if (bound) taken.add(normalize(bound[1]));
+    const own = inKeys && line.match(OWN);
+    if (own) named.set(own[1], own[2] ?? own[3]);
+    const bound = line.match(BOUND);
+    if (bound) taken.add(normalize(bound[1] ?? bound[2]));
   }
   for (const value of named.values()) if (value) taken.add(normalize(value));
   return taken;
@@ -135,9 +150,16 @@ function parseArgs(argv) {
   return options;
 }
 
+// Scratch names are fresh and created exclusively, so a file the person already keeps beside
+// config.toml or plugins.json is never overwritten or removed.
+function scratch(path) {
+  return `${path}.pullboard-needs-${randomUUID()}`;
+}
+
 function write(path, text) {
-  writeFileSync(`${path}.pullboard-needs-installing`, text);
-  renameSync(`${path}.pullboard-needs-installing`, path);
+  const temp = scratch(path);
+  writeFileSync(temp, text, { flag: 'wx' });
+  renameSync(temp, path);
 }
 
 function stamp(date) {
@@ -171,13 +193,14 @@ export function install(argv, env) {
   const lines = [`board ${root}`, `plugin ${dest}`, `key ${options.key} -> ${PLUGIN_ID}.open`];
   if (options.dryRun) return [...lines, 'dry run: nothing written'];
 
-  const candidate = `${tomlPath}.pullboard-needs-candidate`;
-  writeFileSync(candidate, toml);
+  const candidate = scratch(tomlPath);
+  writeFileSync(candidate, toml, { flag: 'wx' });
   try { herdr(['config', 'check'], { ...env, HERDR_CONFIG_PATH: candidate }); }
   catch (error) {
     rmSync(candidate, { force: true });
-    if (error.code !== 'ENOENT') throw new Error(`herdr config check refused the new config.toml; nothing written\n${error.stdout ?? ''}${error.stderr ?? ''}`);
-    lines.push('herdr not found: config.toml was not checked');
+    // An unchecked config.toml could stop Herdr from starting, so no herdr means no install.
+    if (error.code === 'ENOENT') throw new Error(`herdr could not be run to check the new config.toml; nothing written (${error.message}); install Herdr or set HERDR_BIN_PATH`);
+    throw new Error(`herdr config check refused the new config.toml; nothing written\n${error.stdout ?? ''}${error.stderr ?? ''}`);
   }
   rmSync(candidate, { force: true });
 
@@ -189,12 +212,12 @@ export function install(argv, env) {
   }
   lines.push(`backup ${backup}`);
 
-  rmSync(`${dest}.installing`, { recursive: true, force: true });
-  mkdirSync(`${dest}.installing`, { recursive: true });
-  for (const file of FILES) cpSync(join(source, file), join(`${dest}.installing`, file));
-  writeFileSync(join(`${dest}.installing`, 'config.json'), JSON.stringify({ root }, null, 2) + '\n');
+  mkdirSync(dirname(dest), { recursive: true });
+  const staging = mkdtempSync(`${dest}.pullboard-needs-`);
+  for (const file of FILES) cpSync(join(source, file), join(staging, file));
+  writeFileSync(join(staging, 'config.json'), JSON.stringify({ root }, null, 2) + '\n');
   rmSync(dest, { recursive: true, force: true });
-  renameSync(`${dest}.installing`, dest);
+  renameSync(staging, dest);
   write(pluginsPath, plugins + '\n');
   write(tomlPath, toml);
   return [...lines, 'installed; run `herdr server reload-config` (or restart Herdr) to load it'];

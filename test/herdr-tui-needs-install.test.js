@@ -29,14 +29,14 @@ esac
 `;
 
 /** A private HOME and Herdr config folder, and a runner for install.sh against them. */
-function home(t, { config = CONFIG, plugins = [OTHER] } = {}) {
+function home(t, { config = CONFIG, plugins = [OTHER], fake = true } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'herdr-tui-needs-install-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const cfg = join(root, 'herdr');
   const board = join(root, 'board');
   const bin = join(root, 'bin');
   for (const dir of [cfg, board, bin]) mkdirSync(dir);
-  writeFileSync(join(bin, 'herdr'), FAKE_HERDR, { mode: 0o755 });
+  if (fake) writeFileSync(join(bin, 'herdr'), FAKE_HERDR, { mode: 0o755 });
   if (config !== null) writeFileSync(join(cfg, 'config.toml'), config);
   if (plugins !== null) writeFileSync(join(cfg, 'plugins.json'), JSON.stringify(plugins, null, 2));
   const run = (...args) => {
@@ -178,4 +178,44 @@ test('a missing config folder or an unknown argument is refused [B26]', (t) => {
   assert.match(missing.err, /no Herdr config folder/);
   assert.equal(existsSync(cfg), false);
   assert.deepEqual(readdirSync(root).sort(), ['bin', 'board']);
+});
+
+test('without a herdr to run config check, nothing is installed and the reason is printed [B26]', (t) => {
+  const { cfg, installed, run } = home(t, { fake: false });
+  const before = snapshot(cfg);
+  const result = run();
+  assert.equal(result.status, 1);
+  assert.match(result.err, /herdr could not be run to check the new config\.toml; nothing written/);
+  assert.deepEqual(snapshot(cfg), before);
+  assert.equal(existsSync(installed), false);
+});
+
+test('a binding written as a single-quoted TOML string still counts as taken [B26]', (t) => {
+  const own = `${CONFIG}detach  =  'prefix+d'  \n\n[[keys.command]]\n  key='prefix+y'\ntype = "shell"\ncommand = "echo mine"\n`;
+  const { cfg, run } = home(t, { config: own });
+  const before = snapshot(cfg);
+  for (const key of ['prefix+y', 'prefix+d']) {
+    const clash = run('--key', key);
+    assert.equal(clash.status, 1, key);
+    assert.match(clash.err, /is already bound; choose another with --key/, key);
+  }
+  assert.deepEqual(snapshot(cfg), before);
+});
+
+test('files or folders already at its scratch names are left as they were [B26]', (t) => {
+  const { cfg, installed, run } = home(t);
+  const local = join(cfg, 'plugins', 'local');
+  mkdirSync(join(`${installed}.installing`), { recursive: true });
+  writeFileSync(join(`${installed}.installing`, 'mine.txt'), 'mine\n');
+  for (const name of ['config.toml.pullboard-needs-candidate', 'config.toml.pullboard-needs-installing', 'plugins.json.pullboard-needs-installing']) {
+    writeFileSync(join(cfg, name), `mine: ${name}\n`);
+  }
+  const before = { ...snapshot(cfg) };
+  const result = run();
+  assert.equal(result.status, 0, result.err);
+  const after = snapshot(cfg);
+  for (const [path, text] of Object.entries(before)) {
+    if (path.includes('pullboard-needs-') || path.includes('.installing/')) assert.equal(after[path], text, path);
+  }
+  assert.deepEqual(readdirSync(local).sort(), ['pullboard.needs', 'pullboard.needs.installing']);
 });
