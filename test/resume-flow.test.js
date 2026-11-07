@@ -104,7 +104,8 @@ test('resume names row decisions awaiting spec apply [N19]', t => {
   const before = resume();
   assert.deepEqual(before.card.pendingApply, [{ id: 'G1', kind: 'spec', decision: 'approve' }], JSON.stringify(before.card.pendingApply ?? null));
   assert.ok(before.lines.includes(`${APPLY_LINE}G1 approved, pending apply: cd ${box.repo} && pullboard spec apply`), before.lines.join('\n'));
-  assert.match(before.card.next, /^apply the person's recorded row decisions first: cd .+ && pullboard spec apply \(G1 approved\); then /u);
+  assert.match(before.card.next, /^pullboard spec apply/u, before.card.next);
+  assert.doesNotMatch(before.card.next, /first:/u, 'a next step that already is spec apply is not doubled');
   const applied = box.run(box.repo, 'spec', 'apply');
   assert.equal(applied.status, 0, applied.failure || applied.stderr || applied.stdout);
   const after = resume();
