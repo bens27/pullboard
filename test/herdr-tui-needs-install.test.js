@@ -219,3 +219,19 @@ test('files or folders already at its scratch names are left as they were [B26]'
   }
   assert.deepEqual(readdirSync(local).sort(), ['pullboard.needs', 'pullboard.needs.installing']);
 });
+
+test('the key anywhere in config.toml as a quoted string is refused, whatever its table or comment [B26]', (t) => {
+  const configs = [
+    `${CONFIG}\n[[keys.command]]\n"key" = 'prefix+y'\ntype = "shell"\ncommand = "echo mine"\n`,
+    '[keys] # my bindings\nprefix = "ctrl+b"\nsettings = "prefix+y"\n',
+  ];
+  for (const config of configs) {
+    const { cfg, installed, run } = home(t, { config });
+    const before = snapshot(cfg);
+    const clash = run();
+    assert.equal(clash.status, 1, config);
+    assert.match(clash.err, /prefix\+y is already bound; choose another with --key/, config);
+    assert.deepEqual(snapshot(cfg), before);
+    assert.equal(existsSync(installed), false);
+  }
+});

@@ -72,6 +72,18 @@ const VALUE = String.raw`\s*=\s*(?:"([^"]*)"|'([^']*)')`;
 const OWN = new RegExp(String.raw`^\s*(\w+)${VALUE}`, 'u');
 const BOUND = new RegExp(String.raw`^\s*key${VALUE}`, 'u');
 
+/**
+ * Every quoted string in a config, wherever it sits. Reading TOML tables and comments exactly would
+ * take a parser, so a chord found in any of these counts as taken: a false clash only asks for
+ * another --key, a missed one would steal the person's binding.
+ *
+ * @param {string} config
+ * @returns {Set<string>}
+ */
+export function quotedStrings(config) {
+  return new Set([...config.matchAll(/"([^"\n]*)"|'([^'\n]*)'/gu)].map((match) => normalize(match[1] ?? match[2])));
+}
+
 function withoutBlock(text) {
   const start = text.indexOf(BEGIN);
   if (start < 0) return text;
@@ -121,7 +133,7 @@ export function takenKeys(config, defaults) {
 export function planKeys(current, key, defaults = '') {
   if (!/^[\w+.-]+$/u.test(key)) throw new Error(`not a Herdr key binding: ${key}`);
   const rest = withoutBlock(current);
-  if (takenKeys(rest, defaults).has(normalize(key))) throw new Error(`${key} is already bound; choose another with --key`);
+  if (takenKeys(rest, defaults).has(normalize(key)) || quotedStrings(rest).has(normalize(key))) throw new Error(`${key} is already bound; choose another with --key`);
   const block = [BEGIN, '[[keys.command]]', `key = "${key}"`, 'type = "plugin_action"', `command = "${PLUGIN_ID}.open"`, 'description = "Pullboard: needs you"', END].join('\n');
   return (rest ? rest.replace(/\n*$/u, '\n\n') : '') + block + '\n';
 }
