@@ -14,6 +14,14 @@ it says Unknown instead of its calm text; the panel never shows a failed read as
 
 ## What it shows
 
+- **Needs you**: every entry of `pullboard needs --json` (sign-offs, decisions, rows to
+  apply, asks agents filed). Each step shows in order; only the next one has
+  **Run in new tab…**. It opens an input for each prompt and a preview of the filled
+  command, then **Confirm: run in new tab** opens a tab in the "Needs you" space (made on
+  first use), runs the command in the step's folder and leaves the shell open. When an
+  ask's step exits 0, the tab runs `pullboard ask done <n> --step <k>` itself. A pullboard
+  without the `needs` command shows one quiet line instead.
+
 - **Needs attention**: halted work that `pullboard health` gives no reason for, flagged,
   with a recommendation and the command that acts on it:
   - a claimed item whose holder is idle or gone: resume the holder or release the claim;
@@ -46,6 +54,13 @@ or refusal shows under Test capacity. An unknown command is refused there by nam
 Set the `board` prop to the board's folder. Without it, the panel reads the board of the
 focused pane's folder at each refresh.
 
+To open only the Needs-you list in its own tab:
+
+    herdr-app do tab.new '{"name":"Needs you","mod":"pullboard","props":{"view":"needs","board":"<board folder>"}}'
+
+The `needsFile` prop reads a saved JSON file instead of running the command (for example
+`test/needs.json` in this folder, which stays in the repo and is not installed).
+
 ## Install
 
 Herdr loads mods from its app home, never from this folder. From the repo root:
@@ -61,4 +76,6 @@ app home.
 
 - `read-model.js`: pure; turns the five reads into what the panel draws. Tests import it.
 - `cli.js`: runs the reads and slot moves through Herdr's `exec`.
+- `needs-model.js`: pure; quoting, filling prompts, step state and the launch command.
+- `needs-view.js`: the Needs-you section.
 - `main.js`: the Herdr view.
