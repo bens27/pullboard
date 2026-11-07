@@ -22,7 +22,8 @@ export function personNeeds(state) {
   const rows = (state.spec ?? []).filter(row => !row.decision);
   // Coordinator preparation remains in rigorDrafts; only an existing row is a person call.
   const rigorDrafts = (state.rigorDrafts ?? []).filter(draft => draft.unproved !== true || draft.materialized === true && !draft.collision);
-  const drafts = rows.filter(row => (row.status === 'draft' || row.staleDecision) && !rigorDrafts.some(draft => draft.target === `spec:${row.id}`)).length;
+  const draftRows = rows.filter(row => (row.status === 'draft' || row.staleDecision) && !rigorDrafts.some(draft => draft.target === `spec:${row.id}`));
+  const drafts = draftRows.length;
   return [
     ...(state.decisions ?? []).map(ask => ({ kind: 'decision', id: ask.shout_id,
       ref: name(ask.shout_from), text: ask.shout_text, what: 'decision', at: ask.shout_at })),
@@ -58,7 +59,9 @@ export function personNeeds(state) {
       what: `pullboard spec signoff ${row.id} --note "<what you checked>"`, items: row.items, target: `spec:${row.id}` })),
     ...personBlocks(state.blocks ?? []),
     ...(drafts ? [{ kind: 'draft', id: 'drafts', count: drafts, ref: String(drafts),
-      text: 'draft spec rows to approve or drop' + rows.filter(row => row.staleDecision).map(row => `; ${row.stage}`).join(''), what: 'review in SPEC.md', target: 'tab:spec' }] : []),
+      text: 'draft spec rows to approve or drop' + rows.filter(row => row.staleDecision).map(row => `; ${row.stage}`).join(''), what: 'review in SPEC.md', target: 'tab:spec',
+      // Each row by name, so a panel can offer its own approve and decline.
+      rows: draftRows.map(row => ({ id: row.id, text: row.text, ...(row.staleDecision ? { stage: row.stage } : {}) })) }] : []),
     ...(state.relayHealthAlerts ?? []),
   ];
 }

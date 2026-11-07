@@ -7,7 +7,7 @@ function step(label, command, cwd, personOnly = true) {
 }
 
 /** Name the prompts the board's own commands take in words the person reads. */
-const PROMPT_LABELS = { note: 'What you checked', answer: 'Your answer', by: 'Your initials' };
+const PROMPT_LABELS = { note: 'What you checked', answer: 'Your answer', by: 'Your initials', reason: 'Why you decline it' };
 
 /** Label known prompts, keeping unknown keys readable as they are. */
 function labelled(entry) {
@@ -41,6 +41,17 @@ function boardNeed(need, root, signer = '') {
   return labelled({ ...base, steps, next: steps.length ? 1 : null });
 }
 
+/**
+ * Each draft row as two needs, approve and decline: a panel runs only a need's next step, so a
+ * choice between two commands has to be two needs the person picks between.
+ */
+function draftNeeds(need, root) {
+  return (need.rows ?? []).flatMap(row => [['draft', 'Approve', `pullboard spec approve ${row.id}`],
+    ['decline', 'Decline', `pullboard spec decline ${row.id} --reason {reason}`]].map(([kind, verb, command]) =>
+    labelled({ id: `${kind}:${row.id}`, kind, source: 'board', title: `${verb} ${row.id}: ${String(row.text ?? '').split('\n')[0]}`,
+      why: row.stage ?? '', from: null, created: null, steps: [step(`${verb} ${row.id}`, command, root)], next: 1 })));
+}
+
 /** One open ask with its own steps, numbered as filed. */
 function askNeed(row) {
   const steps = row.steps.map(s => ({ n: s.n, label: s.label, command: s.command, cwd: row.cwd,
@@ -51,7 +62,7 @@ function askNeed(row) {
 
 /** The whole list: person needs first, then rows waiting to be written, coordinator questions and open asks. */
 export function needsList({ needs = [], pendingApply = [], openDecisions = [], personQuestions = [], asks = [], root, signer = '' }) {
-  const list = needs.map(need => boardNeed(need, root, signer));
+  const list = needs.flatMap(need => need.kind === 'draft' && need.rows?.length ? draftNeeds(need, root) : [boardNeed(need, root, signer)]);
   const decided = new Set(needs.filter(need => need.kind === 'decision').map(need => String(need.id)));
   for (const ask of personQuestions) {
     if (decided.has(String(ask.id))) continue;

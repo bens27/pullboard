@@ -52,6 +52,16 @@ test('one builder lists what needs the person [N26,A9]', async (t) => {
     'approved source added after init stays visibly unconfirmed');
   assert.equal(expected.find(need => need.kind === 'pending').id, 'G3');
   assert.equal(expected.find(need => need.kind === 'draft').count, 1);
+  assert.deepEqual(expected.find(need => need.kind === 'draft').rows, [{ id: 'G6', text: 'Review the proposed retry policy.' }],
+    'the draft count names each row so a panel can act on it [B26]');
+  const listed = box.run(box.repo, 'needs', '--json');
+  assert.equal(listed.code, 0, listed.err || listed.out);
+  const runnable = JSON.parse(listed.out).needs.filter(need => /^(draft|decline):/u.test(need.id));
+  assert.deepEqual(runnable.map(need => [need.id, need.title, need.steps.map(step => step.command)]), [
+    ['draft:G6', 'Approve G6: Review the proposed retry policy.', ['pullboard spec approve G6']],
+    ['decline:G6', 'Decline G6: Review the proposed retry policy.', ['pullboard spec decline G6 --reason {reason}']],
+  ], 'each draft row is its own runnable approve and decline need [B26]');
+  assert.deepEqual(runnable[1].steps[0].prompts, [{ key: 'reason', label: 'Why you decline it', default: '' }]);
   assert.equal(expected.find(need => need.kind === 'hold').id, 'web');
   assert.equal(expected.find(need => need.kind === 'decision').text, 'Which public interface should we keep?');
   assert.ok(!expected.some(need => ['G4', 'G5'].includes(need.id)), 'approved and declined unapplied rows stay out');
