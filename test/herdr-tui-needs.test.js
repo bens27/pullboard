@@ -652,3 +652,18 @@ test('several boards with no need to run still show each note and draw without a
   assert.ok(screen.some((line) => line.includes('Nothing needs you here.')), screen.join('\n'));
   assert.deepEqual(keys(state, 'down', ' ', 'enter').effects, [], 'no key acts on a need that is not there');
 });
+
+test('a configured worktree runs steps and ask done in the main checkout its board reports [B26]', () => {
+  const ask = { id: 'ask:3f9a0c12', kind: 'ask', source: 'ask', title: 'Ask', next: 1,
+    steps: [{ n: 1, label: 'Go', command: 'true', cwd: '/x/superagent', prompts: [], personOnly: true, done: false }] };
+  return readBoards(['/x/wt/superagent-web', '/x/superagent', '/x/old'], async (root) => (
+    root === '/x/old' ? { root: '', needs: [] } : { root: '/x/superagent', needs: [ask] })).then((read) => {
+    assert.deepEqual(read.boards.map((board) => [board.name, board.root]), [['superagent-web', '/x/superagent'], ['old', '/x/old']],
+      'the board runs from the root it reports, the configured folder only when it reports none, and one board lists once');
+    const single = keys(loaded(initialState(), read), 'enter', 'enter', 'y');
+    const run = single.effects[0].run;
+    assert.equal(run.root, '/x/superagent', 'a run carries the reported root');
+    const script = stepScript({ ...run, self: '/tmp/self' });
+    assert.ok(script.includes("cd -- '/x/superagent' && pullboard ask done '3f9a0c12' --step 1 --as person"), script);
+  });
+});

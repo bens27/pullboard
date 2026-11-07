@@ -94,7 +94,9 @@ export function configRoots(config) {
 
 /**
  * Read every board with the given reader, in the configured order. Each board is named by its
- * folder, and one that fails keeps its place with its note, so it never hides the boards that read.
+ * configured folder, and one that fails keeps its place with its note, so it never hides the boards
+ * that read. A board runs from the root it reports, since a configured worktree reports its main
+ * checkout and only there may `ask done --as person` record a step; two folders reporting one board list it once.
  *
  * @param {string[]} roots
  * @param {(root: string) => Promise<{ needs: any[], root: string } | { note: string }>} reader
@@ -106,9 +108,10 @@ export async function readBoards(roots, reader) {
     let read;
     try { read = await reader(root); }
     catch (error) { read = { note: `Could not read what needs you in ${root}: ${String(error?.message ?? error).split('\n')[0]}` }; }
-    return 'note' in read ? { root, name, note: read.note } : { root, name, needs: read.needs };
+    return 'note' in read ? { root, name, note: read.note } : { root: read.root || root, name, needs: read.needs };
   }));
-  return { boards };
+  const seen = new Set();
+  return { boards: boards.filter((board) => 'note' in board || !seen.has(board.root) && seen.add(board.root)) };
 }
 
 /**
