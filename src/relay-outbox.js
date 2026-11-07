@@ -52,6 +52,7 @@ import { captureBoardChanges } from './board-capture.js';
 import { undoQueued } from './relay-outbox-undo.js';
 import { stampCoordinatorHolder } from './coordinator-hold.js';
 import { Refused } from './refused.js';
+import { refuseOversizedMove } from './relay-move-size.js';
 import {
   outboxFile,
   outboxSummaryFile,
@@ -409,6 +410,7 @@ export async function queueMove(link, { operation, args, command, move, error, a
     move.actor = relayMoveActor(move) ?? credentialActor(move);
   }
   refuseRevokedSeat(state, credentialActor(move));
+  refuseOversizedMove(move, describeMove(move));
   const stray = strayItemRefs(outbox, move);
   if (stray.length) {
     throw new Refused('RELAY_OUTBOX_UNBOUND', `this move names #${stray[0]}, which this machine added while the relay was down, in a field the outbox cannot follow if the relay renumbers it; run it again once the relay answers`);

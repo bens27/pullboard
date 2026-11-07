@@ -143,6 +143,7 @@ import {
 } from './relay-move-fallback.js';
 import {
   ACKNOWLEDGED_OPERATIONS,
+  describeMove,
   flushOutbox,
   outboxFields,
   outboxFile,
@@ -162,6 +163,7 @@ import {
   rememberRelink,
 } from './relay-relink.js';
 import { Refused } from './refused.js';
+import { refuseOversizedMove } from './relay-move-size.js';
 import { landingRelayCallbacks } from './landing-relay.js';
 import { relayOrigin } from './relay-origin.js';
 import { readRelayLink } from './relay-link-read.js';
@@ -1142,6 +1144,7 @@ export async function relayOperation(root, operation, args, io, command, applyLo
           const problem = move.personRequest && localRecords(root, board => requestMoveProblem(board, move, { checkExecutorLease: false }));
           if (problem) throw problem;
           move.actor = relayMoveActor(move) ?? credentialActor(move);
+          refuseOversizedMove(move, describeMove(move));
           await actorTransport(root, file, state, credentialActor(move), io);
           const sequence = state.sequence + 1;
           const sealed = await sealedRecord(readBoardKey(state.board), move, state, 'move', sequence);
