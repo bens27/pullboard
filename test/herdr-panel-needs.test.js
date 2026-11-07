@@ -36,13 +36,15 @@ test('a value with quotes, $() and newlines reaches the command as one literal w
   assert.equal(shellQuote(''), "''");
 });
 
-test('placeholders fill from answers, then defaults; undeclared braces stay [B26]', () => {
-  const step = { command: "pullboard x {note} --as {who} {other} ${who} awk '{print}'", prompts: [{ key: 'note', default: 'n/a' }, { key: 'who', default: 'me' }] };
-  assert.equal(fillCommand(step, { note: "Ben's check" }), "pullboard x 'Ben'\\''s check' --as 'me' {other} ${who} awk '{print}'");
+test('placeholders fill from answers, then defaults; a step without one stays as written [B26]', () => {
+  const step = { command: 'pullboard spec signoff G9 --by BS --note {note} --as {who}', prompts: [{ key: 'note', default: 'n/a' }, { key: 'who', default: 'me' }] };
+  assert.equal(fillCommand(step, { note: "Ben's check" }), "pullboard spec signoff G9 --by BS --note 'Ben'\\''s check' --as 'me'");
+  assert.equal(fillCommand({ command: 'pullboard relay join {code}', prompts: [{ key: 'code' }] }, { code: 'ab-12' }), "pullboard relay join 'ab-12'");
+  assert.equal(fillCommand({ command: "awk '{print}' {other} ${who}", prompts: [{ key: 'note' }] }), "awk '{print}' {other} ${who}");
   assert.equal(shellSees('printf "%s|" ' + fillCommand({ command: '{a} {a}', prompts: [{ key: 'a' }] }, { a: 'x y' })), 'x y|x y|');
 });
 
-test('a declared placeholder near a quote, backslash or $( is refused, not filled [B26]', () => {
+test('a placeholder that is not a bare word among plain characters is refused, not filled [B26]', () => {
   const evil = '$(printf INJECTED)';
   const refused = [
     "printf '%s' '{note}'", 'printf "%s" "{note}"', 'echo "a {note}"', 'echo "\\{note}"',
@@ -50,13 +52,12 @@ test('a declared placeholder near a quote, backslash or $( is refused, not fille
     "echo \\'{note}",
     'cat <<EOF\n{note}\nEOF', 'cat <<-EOF\r{note}', 'cat <<< {note}', 'echo {note}\necho done',
     'echo ok # {note}', 'echo {note}#',
+    'print -r -- ${(eQ):-{note}}', '--x={note}', 'echo {note} ${HOME}', "echo {note} '{x'", 'echo {note} {other}', 'echo\t{note}',
   ];
   for (const command of refused) {
     assert.throws(() => fillCommand({ command, prompts: [{ key: 'note' }] }, { note: evil }), /cannot be filled safely/, command);
   }
-  assert.equal(shellSees(fillCommand({ command: "printf '%s' {note}", prompts: [{ key: 'note' }] }, { note: evil })), evil);
-  const bare = { command: "echo {note} ${HOME} '{x'", prompts: [{ key: 'note' }] };
-  assert.equal(fillCommand(bare, { note: 'a b' }), "echo 'a b' ${HOME} '{x'");
+  assert.equal(shellSees(fillCommand({ command: 'printf %s {note}', prompts: [{ key: 'note' }] }, { note: evil })), evil);
   assert.equal(fillCommand({ command: 'echo "$(date)" {other}', prompts: [{ key: 'note' }] }), 'echo "$(date)" {other}');
   const need = { id: 'ask:3f9a0c12', next: 1, steps: [{ n: 1, cwd: '/tmp', command: "echo '{note}'", prompts: [{ key: 'note' }] }] };
   assert.match(planRun({ need, n: 1, values: { note: 'x' }, spaces: [] }).refused, /cannot be filled safely/);

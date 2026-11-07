@@ -20,7 +20,8 @@ it says Unknown instead of its calm text; the panel never shows a failed read as
   command, then **Confirm: run in new tab** opens a tab in the "Needs you" space (made on
   first use), runs the command in the step's folder and leaves the shell open. When an
   ask's step exits 0, the tab runs `pullboard ask done <id> --step <k> --as person` itself.
-  A step whose prompt sits inside '...', or that uses `"`, a backtick, `\` or `$(`, is
+  A step with a prompt must use it as a bare word, with only letters, digits, spaces and
+  `_ . / : @ % + , = -` around it, and each answer must be one line; anything else is
   refused with the reason instead of filled. A pullboard
   without the `needs` command shows one quiet line instead.
 
