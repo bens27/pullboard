@@ -16,6 +16,7 @@ import { decodeBoardKey } from '../src/seal.js';
 import { frozenCriterion, loadSpec } from '../src/spec.js';
 import { runFixtureGit } from './fixture-child.js';
 import { relayClientFixture } from './relay-client-fixture.js';
+import { mirrorPending } from '../src/relay-move-size.js';
 
 const HOUR = 3_600_000;
 const RELAY_BODY_BYTES = 100_000;
@@ -116,4 +117,76 @@ test('an oversized health move already queued is compacted and sent, never left 
   writeFileSync(outboxSummaryFile(box.linkFile), JSON.stringify({ restored: false, moves: [outboxEntrySummary(entry)] }) + '\n', { mode: 0o600 });
 
   await assertOutboxFlows(box);
+});
+
+const LONG_TITLES = 30;
+
+/** Turn the ordered link back into an older client's mirror link, so the next command migrates it. */
+function legacyMirrorLink(box) {
+  const board = store.openBoard(join(box.root, '.git', 'pullboard', 'board.sqlite'));
+  let cursor;
+  try { cursor = board.db.prepare('SELECT COALESCE(MAX(event_id), 0) AS id FROM event').get().id; } finally { board.db.close(); }
+  const link = JSON.parse(readFileSync(box.linkFile, 'utf8'));
+  link.cursor = cursor;
+  delete link.mode;
+  delete link.presentationDigest;
+  writeFileSync(box.linkFile, JSON.stringify(link) + '\n', { mode: 0o600 });
+  return link;
+}
+
+/** Add local items the mirror has not sent yet; long titles make the board's presentation exceed the body limit. */
+function addUnmirroredItems(box, count, title) {
+  const board = store.openBoard(join(box.root, '.git', 'pullboard', 'board.sqlite'));
+  try {
+    for (let index = 0; index < count; index += 1) store.addItem(board, { by: 'coordinator', lane: box.lane, title: `${title} ${index + 1}` });
+  } finally { board.db.close(); }
+}
+
+/** Migration finished in relay order, with every mirrored record under the limit and the items still on the board. */
+async function assertMirrorMigrates(box, title) {
+  const status = await box.cli('status');
+  assert.equal(status.code, 0, status.failure);
+  assertMovesFit(box);
+  const link = JSON.parse(readFileSync(box.linkFile, 'utf8'));
+  assert.equal(link.mode, 'ordered', 'the mirror migrated to relay order');
+  assert.equal(link.pending, undefined, 'no mirrored record is left pending');
+  const exported = await box.cli('export');
+  assert.ok(exported.document.tables.item.some(row => row.item_title.startsWith(title)), 'the mirrored items stay on the board');
+}
+
+test('a mirror record whose presentation is over the relay body limit is sent without it, never posted to a sure refusal [B26,H16]', async (t) => {
+  const box = await relayClientFixture(t);
+  await box.link();
+  legacyMirrorLink(box);
+  const title = 'Mirrored long title ' + 'x'.repeat(4_000);
+  addUnmirroredItems(box, LONG_TITLES, title);
+  await assertMirrorMigrates(box, title);
+});
+
+test('an oversized mirror record an older client left pending is resealed under the limit, never retried forever [B26,H16]', async (t) => {
+  const box = await relayClientFixture(t);
+  await box.link();
+  const link = legacyMirrorLink(box);
+  addUnmirroredItems(box, 1, 'Mirrored after an oversized record');
+  link.pending = { localEvent: link.cursor + 1, sequence: link.sequence + 1, needsPresentation: false, sealed: 'A'.repeat(RELAY_BODY_BYTES + 10_000) };
+  writeFileSync(box.linkFile, JSON.stringify(link) + '\n', { mode: 0o600 });
+  await assertMirrorMigrates(box, 'Mirrored after an oversized record');
+});
+
+test('a mirror record too large even without its presentation is refused with the re-link step, never posted [B26,H16]', async () => {
+  const event = { event_id: 7 };
+  const presentation = { state: { events: [{ event_id: 7 }] } };
+  const sealedSizes = [];
+  const seal = async (record) => {
+    const sealed = 'A'.repeat(RELAY_BODY_BYTES + 1);
+    sealedSizes.push(record.presentation ? 'with presentation' : 'event alone');
+    return sealed;
+  };
+  await assert.rejects(mirrorPending({ sequence: 3, needsPresentation: false }, event, () => presentation, seal), (error) => {
+    assert.equal(error.code, 'RELAY_MOVE_TOO_LARGE');
+    assert.match(error.message, /local event 7 would send \d+ bytes/u);
+    assert.match(error.next, /relay off.*relay on/u);
+    return true;
+  });
+  assert.deepEqual(sealedSizes, ['with presentation', 'event alone'], 'it tries the record without its presentation before refusing');
 });

@@ -164,6 +164,7 @@ import {
 } from './relay-relink.js';
 import { Refused } from './refused.js';
 import { refuseOversizedMove } from './relay-move-size.js';
+import { mirrorPending } from './relay-move-size.js';
 import { landingRelayCallbacks } from './landing-relay.js';
 import { relayOrigin } from './relay-origin.js';
 import { readRelayLink } from './relay-link-read.js';
@@ -786,15 +787,8 @@ async function flushMirror(root, file, state, io) {
   saveLink(file, state);
   const rows = localRecords(root, (board) => store.events(board).filter((event) => event.event_id > state.cursor));
   for (const event of rows) {
-    if (!state.pending) {
-      const sequence = state.sequence + 1;
-      const current = relayPresentation(root);
-      // Only a projection ending at this local record belongs to its relay position.
-      const presentation = current.state.events[0]?.event_id === event.event_id ? current : undefined;
-      state.pending = { localEvent: event.event_id, sequence, needsPresentation: Boolean(state.needsPresentation || !presentation), ...(presentation ? { presentationDigest: presentationDigest(presentation) } : {}),
-        sealed: await sealedRecord(key, { version: 1, engine: ENGINE_VERSION, event, presentation }, state, 'move', sequence) };
-      saveLink(file, state);
-    }
+    const pending = await mirrorPending(state, event, () => relayPresentation(root), (record, sequence) => sealedRecord(key, { version: 1, engine: ENGINE_VERSION, ...record }, state, 'move', sequence));
+    if (pending !== state.pending) { state.pending = pending; saveLink(file, state); }
     const { sequence, sealed } = state.pending;
     const reply = await request(state, path + '/moves', { method: 'POST', body: { sequence, sealed } }, io);
     if (reply.event?.event_id !== sequence || reply.event.sealed !== sealed) throw new Refused('RELAY_RESPONSE', 'the relay acknowledgement does not match the queued record; retry after checking the relay');
