@@ -177,11 +177,46 @@ export function press(state, key) {
   return { state };
 }
 
+// A control character drawn raw could move the cursor or clear the screen, so the text a person
+// reads differs from what runs; shown as \xNN it is visible and harmless. Display only.
+function visible(text) {
+  return String(text).replace(/[\x00-\x1f\x7f-\x9f]/gu, (char) => `\\x${char.codePointAt(0).toString(16).padStart(2, '0')}`);
+}
+
+const WIDE = [[0x1100, 0x115f], [0x2e80, 0x303e], [0x3041, 0x33ff], [0x3400, 0x4dbf], [0x4e00, 0x9fff], [0xa000, 0xa4cf], [0xa960, 0xa97f],
+  [0xac00, 0xd7a3], [0xf900, 0xfaff], [0xfe10, 0xfe19], [0xfe30, 0xfe6f], [0xff00, 0xff60], [0xffe0, 0xffe6], [0x20000, 0x3fffd]];
+
+// Terminal cells one code point takes. Counting code points instead let a line of wide characters
+// spill onto extra rows and push the start of a command off the confirm screen.
+function cellWidth(char) {
+  if (/[\p{Mn}\p{Me}\p{Cf}]/u.test(char)) return 0;
+  const point = char.codePointAt(0);
+  if (WIDE.some(([low, high]) => point >= low && point <= high) || /\p{Emoji_Presentation}/u.test(char)) return 2;
+  return 1;
+}
+
+function cells(text) {
+  let sum = 0;
+  for (const char of text) sum += cellWidth(char);
+  return sum;
+}
+
+function cut(line, cols) {
+  let out = '';
+  let used = 0;
+  for (const char of visible(line)) {
+    used += cellWidth(char);
+    if (used > cols) break;
+    out += char;
+  }
+  return out;
+}
+
 function wrap(text, width) {
   const lines = [];
   let line = '';
-  for (const word of String(text).split(/\s+/u).filter(Boolean)) {
-    if (line && line.length + 1 + word.length > width) { lines.push(line); line = word; }
+  for (const word of visible(text).split(/\s+/u).filter(Boolean)) {
+    if (line && cells(line) + 1 + cells(word) > width) { lines.push(line); line = word; }
     else line = line ? `${line} ${word}` : word;
   }
   if (line) lines.push(line);
@@ -191,14 +226,22 @@ function wrap(text, width) {
 // A command or folder about to be authorized is cut at the character, never dropped: every
 // character stays on screen, and a continuation is indented under its first line.
 function hardWrap(text, first, rest, cols) {
-  const chars = [...String(text)];
   const lines = [];
-  let prefix = first;
-  do {
-    const room = Math.max(1, cols - prefix.length);
-    lines.push(prefix + chars.splice(0, room).join(''));
-    prefix = rest;
-  } while (chars.length);
+  let line = '';
+  let room = cols - cells(first);
+  let used = 0;
+  for (const char of visible(text)) {
+    const width = cellWidth(char);
+    if (line && used + width > room) {
+      lines.push((lines.length ? rest : first) + line);
+      line = '';
+      used = 0;
+      room = cols - cells(rest);
+    }
+    line += char;
+    used += width;
+  }
+  lines.push((lines.length ? rest : first) + line);
   return lines;
 }
 
@@ -265,7 +308,7 @@ export function render(state, cols, rows) {
     const count = state.selected.length;
     lines.push('', count ? `up/down choose   space select   r/enter run selected (${count})   q close` : 'up/down choose   space select   enter open   r refresh   q close');
   } else if (state.mode === 'need') lines = needLines(state, width);
-  else if (state.mode === 'batch') return batchLines(state, cols, rows).map((line) => [...line].slice(0, cols).join(''));
+  else if (state.mode === 'batch') return batchLines(state, cols, rows).map((line) => cut(line, cols));
   else if (state.mode === 'prompt' && state.batch) {
     const { items, index, promptIndex } = state.batch;
     const { need, step } = items[index];
@@ -279,5 +322,5 @@ export function render(state, cols, rows) {
     if (state.need.source === 'ask') body.push(...wrap('When it exits 0 the step is marked done on the board.', width), '');
     lines = paged(body, 'y run   n cancel', state.scroll, rows);
   }
-  return lines.slice(0, rows).map((line) => [...line].slice(0, cols).join(''));
+  return lines.slice(0, rows).map((line) => cut(line, cols));
 }

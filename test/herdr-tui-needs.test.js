@@ -373,3 +373,46 @@ test('a single step confirm on a short screen scrolls to the end of a long comma
   assert.equal(keys(confirm, 'down', 'down', 'y').effects[0].run.command, command);
   assert.equal(render(confirm, 80, 40).at(-1), 'y run   n cancel');
 });
+
+/** Terminal cells a test line takes: the wide test character 界 takes two, everything else here one. */
+function cellsOf(line) {
+  return [...line].reduce((sum, char) => sum + (char === '界' ? 2 : 1), 0);
+}
+
+test('confirm screens wrap wide characters by terminal cells, so nothing spills past the width [B26]', () => {
+  const command = `echo '${'界'.repeat(200)}'`;
+  const need = { id: 'ask:0123abcd', kind: 'ask', source: 'ask', title: 'Wide', steps: [{ n: 1, label: 'Wide', command, cwd: '/r', prompts: [], done: false }], next: 1 };
+  const start = loaded(initialState(), { root: '/r', needs: [need] });
+  for (const [confirm, first, rest] of [[keys(start, 'enter', 'enter').state, '  ', '    '], [keys(start, ' ', 'r').state, '  1. ', '     ']]) {
+    assert.ok(['confirm', 'batch'].includes(confirm.mode));
+    const top = render(confirm, 40, 6);
+    assert.ok(top.some((line) => line.startsWith(`${first}echo '界`)), top.join('\n'));
+    const seen = [];
+    for (let down = 0; down < 40; down += 1) {
+      const screen = render(keys(confirm, ...Array(down).fill('down')).state, 40, 6);
+      for (const line of screen) assert.ok(cellsOf(line) <= 40, line);
+      seen.push(...screen.slice(0, 5));
+    }
+    const tall = render(confirm, 40, 200);
+    assert.equal(unwrap(tall, first, rest), command);
+    for (const line of tall.slice(0, -1)) assert.ok(seen.includes(line), line);
+  }
+});
+
+test('an answer with a control character is refused, and a control character in a step shows as text [B26]', () => {
+  assert.throws(() => fillCommand({ command: 'echo {note}', prompts: [{ key: 'note' }] }, { note: 'a\x1b[2Jb' }), /control character/u);
+  for (const note of ['a\x07b', 'a\x7fb', 'a\x9bb', 'a\tb']) {
+    assert.throws(() => fillCommand({ command: 'echo {note}', prompts: [{ key: 'note' }] }, { note }), /control character/u, JSON.stringify(note));
+  }
+  const command = 'printf \x1b[2J\x1b]0;x\x07';
+  const need = { id: 'ask:0123abcd', kind: 'ask', source: 'ask', title: 'Esc', steps: [{ n: 1, label: 'Esc', command, cwd: '/r\x1bq', prompts: [], done: false }], next: 1 };
+  const start = loaded(initialState(), { root: '/r', needs: [need] });
+  for (const confirm of [keys(start, 'enter', 'enter').state, keys(start, ' ', 'r').state]) {
+    const lines = render(confirm, 80, 40);
+    assert.ok(lines.every((line) => !/[\x00-\x1f\x7f-\x9f]/u.test(line)), lines.join('|'));
+    assert.ok(lines.some((line) => line.includes('printf \\x1b[2J\\x1b]0;x\\x07')), lines.join('\n'));
+    assert.ok(lines.some((line) => line.includes('in /r\\x1bq')), lines.join('\n'));
+  }
+  assert.equal(keys(start, 'enter', 'enter', 'y').effects[0].run.command, command);
+  assert.ok(render(keys(start, 'enter').state, 80, 40).every((line) => !/[\x00-\x1f\x7f-\x9f]/u.test(line)));
+});

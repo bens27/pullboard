@@ -20,7 +20,8 @@ export function shellQuote(value) {
  * every shell keeps finding new ways to re-parse a quoted word ($(, heredocs, comments, zsh's (e)
  * flag): each placeholder must stand alone as a word between spaces, and the rest may hold only
  * letters, digits, spaces and _ . / : @ % + , = -. An answer must be one line, so it can never
- * start a command of its own.
+ * start a command of its own, and free of control characters, so it can never repaint the screen
+ * that shows it.
  *
  * @param {{ command: string, prompts?: { key: string, default?: string }[] }} step
  * @param {Record<string, string>} values
@@ -48,6 +49,7 @@ export function fillCommand(step, values = {}) {
   const answers = new Map(hits.map(({ key }) => [key, Object.hasOwn(values, key) ? String(values[key]) : String(prompts.get(key).default ?? '')]));
   for (const [key, value] of answers) {
     if (/[\n\r\0]/u.test(value)) throw new Error(`answer for {${key}} must be one line: a line break or NUL in it would run as its own command`);
+    if (/[\x00-\x1f\x7f-\x9f]/u.test(value)) throw new Error(`answer for {${key}} must not hold a control character: it could redraw the confirm screen over what runs`);
   }
   let out = '';
   from = 0;
