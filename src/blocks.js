@@ -151,11 +151,9 @@ export function stoppedCommandKey(io) {
     values: Object.keys(values).sort().map(name => [name, values[name]]) });
 }
 
-/** Blocks recorded before the stopped command was hashed name only a bare command, which only that bare command repeats. */
+/** Blocks recorded before the stopped command was hashed kept only its name, so they cannot prove a runner repeated it. */
 function stoppedBy(block, io) {
-  if (block.stopped) return block.stopped === stoppedCommandKey(io);
-  const command = io.relayCommand;
-  return !command?.positionals?.length && !Object.keys(command?.values ?? {}).length && block.command === `pullboard ${command?.cliOperation}`;
+  return Boolean(block.stopped) && block.stopped === stoppedCommandKey(io);
 }
 
 /** A multirow refusal completes only after every target has its own later successful move. */

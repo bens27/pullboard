@@ -128,7 +128,7 @@ test('a successful edit clears only its own item [C6]', () => {
   assert.deepEqual(readBlocks(info.commonDir), [], 'the same item clears across its accepted #id spelling');
 });
 
-test('a person block clears when its stopped runner completes the move, or relay on reissues the token [B26]', () => {
+test('a hashless person block waits for relay on; relay on clears only expired-token blocks [B26]', () => {
   const box = e2e.project();
   const info = repoInfo(box.repo);
   const io = (positionals, cliOperation, personChannel) => ({ cwd: box.repo, personChannel, err: () => {},
@@ -139,17 +139,17 @@ test('a person block clears when its stopped runner completes the move, or relay
     reason: 'your sign-in for the coordinator expired', step: 'run pullboard relay on in the main checkout',
     moveKey: blockMoveKey(move), moveKeys: blockMoveKeys(move), owner: 'person', id: `${code}-${at}` });
   block('2026-11-07T19:54:06.755Z');
-  // The coordinator's own takeover succeeding means nothing stops it any more.
+  // A block recorded before commands were hashed kept only `pullboard <name>`, whatever its arguments were.
   clearCompletedBlocks(takeover, new Date('2026-11-07T20:00:00.000Z'));
-  assert.deepEqual(readBlocks(info.commonDir), [], 'the stopped runner\'s later success clears its person block');
+  assert.equal(readBlocks(info.commonDir).length, 1, 'a block with no stopped hash cannot show the runner repeated its command');
 
   block('2026-11-07T20:01:00.000Z', 'HUMAN_REQUIRED', 'agent');
   clearCompletedBlocks(takeover, new Date('2026-11-07T20:02:00.000Z'));
-  assert.equal(readBlocks(info.commonDir).length, 1, 'a success by a different runner leaves another runner\'s person block');
+  assert.equal(readBlocks(info.commonDir).length, 2, 'a success by a different runner leaves another runner\'s person block');
 
   block('2026-11-07T20:03:00.000Z', 'TOKEN_EXPIRED', 'coordinator', io(['3'], 'claim', 'agent'));
   clearCompletedBlocks(io(['off'], 'relay', 'view'), new Date('2026-11-07T20:04:00.000Z'));
-  assert.equal(readBlocks(info.commonDir).length, 2, 'relay off reissues nothing');
+  assert.equal(readBlocks(info.commonDir).length, 3, 'relay off reissues nothing');
   clearCompletedBlocks(io(['on'], 'relay', 'view'), new Date('2026-11-07T20:05:00.000Z'));
   assert.deepEqual(readBlocks(info.commonDir).map(row => row.code), ['HUMAN_REQUIRED'],
     'relay on reissues the coordinator token, clearing every expired-token block and nothing else');
