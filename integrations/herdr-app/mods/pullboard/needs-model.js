@@ -65,7 +65,8 @@ export function runnableStep(need, n) {
 /**
  * Fill a step's command: each `{key}` a prompt declares becomes that answer, shell-quoted, and a
  * missing answer takes the prompt's default. Braces no prompt declares stay as written, since a
- * command may carry its own (an awk program, say).
+ * command may carry its own (an awk program, say). A declared placeholder inside quotes is refused:
+ * there the single-quoted answer would close the template's quote and run as shell syntax.
  *
  * @param {{ command: string, prompts?: { key: string, default?: string }[] }} step
  * @param {Record<string, string>} values
@@ -73,11 +74,27 @@ export function runnableStep(need, n) {
  */
 export function fillCommand(step, values = {}) {
   const prompts = new Map((step.prompts ?? []).map((p) => [p.key, p]));
-  return String(step.command ?? '').replace(/(?<!\$)\{([A-Za-z_][\w-]*)\}/g, (whole, key) => {
-    if (!prompts.has(key)) return whole;
-    const value = Object.hasOwn(values, key) ? values[key] : prompts.get(key).default ?? '';
-    return shellQuote(value);
-  });
+  const template = String(step.command ?? '');
+  const placeholder = /\{([A-Za-z_][\w-]*)\}/y;
+  let out = '';
+  let quote = '';
+  for (let i = 0; i < template.length;) {
+    const ch = template[i];
+    if (quote !== "'" && ch === '\\') { out += template.slice(i, i + 2); i += 2; continue; }
+    if (ch === "'" || ch === '"') {
+      if (!quote) quote = ch; else if (quote === ch) quote = '';
+      out += ch; i += 1; continue;
+    }
+    placeholder.lastIndex = i;
+    const hit = template[i - 1] !== '$' ? placeholder.exec(template) : null;
+    if (hit && prompts.has(hit[1])) {
+      if (quote) throw new Error(`placeholder {${hit[1]}} sits inside quotes in: ${template}`);
+      const value = Object.hasOwn(values, hit[1]) ? values[hit[1]] : prompts.get(hit[1]).default ?? '';
+      out += shellQuote(value); i += hit[0].length; continue;
+    }
+    out += ch; i += 1;
+  }
+  return out;
 }
 
 /**
@@ -129,7 +146,7 @@ export function launchCommand(spaces, { name, cwd, script }) {
 
 /**
  * Everything one confirmed run needs: the filled command, the tab's command and its name, or why
- * it cannot run (a step that is not next, or one with no folder).
+ * it cannot run (a step that is not next, one with no folder, or a quoted placeholder).
  *
  * @param {{ need: any, n: number, values: Record<string, string>, root?: string|null, spaces: any[] }} input
  * @returns {{ command: string, launch: { command: string, args: Record<string, unknown> } } | { refused: string }}
@@ -138,7 +155,8 @@ export function planRun({ need, n, values, root = null, spaces }) {
   const step = runnableStep(need, n);
   if (!step) return { refused: `step ${n} of ${need.id} is not the next step` };
   if (!step.cwd) return { refused: `step ${n} of ${need.id} names no folder to run in` };
-  const command = fillCommand(step, values);
+  let command;
+  try { command = fillCommand(step, values); } catch (error) { return { refused: error.message }; }
   const script = stepScript({ command, askId: askId(need), step: n, root });
   const name = `${need.title ?? need.id} · ${step.label ?? 'step ' + n}`.slice(0, 60);
   return { command, launch: launchCommand(spaces, { name, cwd: step.cwd, script }) };

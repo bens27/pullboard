@@ -71,6 +71,11 @@ export class NeedsSection {
       .text_color(primary ? t.solid_foreground : t.accent).cursor_pointer().on_click(handler).child(label);
   }
 
+  /** The filled command, or why it cannot be filled, so a bad template shows instead of throwing. */
+  preview(step) {
+    try { return fillCommand(step, this.values()); } catch (error) { return error.message; }
+  }
+
   /** The prepared step: an input per prompt, the command it will run, and the confirm button. */
   draftRows(need, step) {
     const t = theme();
@@ -78,7 +83,7 @@ export class NeedsSection {
       .child(div().text_size(11).text_color(t.muted).child(input.label))
       .child(Input.new(input.state).h(28).px(6).rounded(4).border_1().border_color(t.input).bg(t.background).text_color(t.foreground)));
     rows.push(div().text_size(11).text_color(t.muted).child(`in ${step.cwd}`));
-    rows.push(div().text_size(12).p(6).rounded(4).bg(t.background).child(fillCommand(step, this.values())));
+    rows.push(div().text_size(12).p(6).rounded(4).bg(t.background).child(this.preview(step)));
     rows.push(h_flex().gap(8)
       .child(this.button(`need-confirm-${need.id}`, 'Confirm: run in new tab', (_e, cx) => this.confirm(cx), true))
       .child(this.button(`need-cancel-${need.id}`, 'Cancel', (_e, cx) => { this.draft = null; cx.notify(); })));

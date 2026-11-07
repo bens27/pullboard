@@ -42,6 +42,17 @@ test('placeholders fill from answers, then defaults; undeclared braces stay [B26
   assert.equal(shellSees('printf "%s|" ' + fillCommand({ command: '{a} {a}', prompts: [{ key: 'a' }] }, { a: 'x y' })), 'x y|x y|');
 });
 
+test('a declared placeholder inside quotes is refused, not filled [B26]', () => {
+  const evil = '$(printf INJECTED)';
+  for (const command of ["printf '%s' '{note}'", 'printf "%s" "{note}"', "echo \"a {note}\""]) {
+    assert.throws(() => fillCommand({ command, prompts: [{ key: 'note' }] }, { note: evil }), /inside quotes/);
+  }
+  assert.equal(shellSees(fillCommand({ command: "printf '%s' {note}", prompts: [{ key: 'note' }] }, { note: evil })), evil);
+  assert.equal(fillCommand({ command: "echo \\'{note}", prompts: [{ key: 'note' }] }, { note: 'x' }), "echo \\''x'");
+  const need = { id: 'ask:1', next: 1, steps: [{ n: 1, cwd: '/tmp', command: "echo '{note}'", prompts: [{ key: 'note' }] }] };
+  assert.match(planRun({ need, n: 1, values: { note: 'x' }, spaces: [] }).refused, /inside quotes/);
+});
+
 test('the fixture reads as needs; a pullboard without the command is missing, not an error [B26]', () => {
   const read = readNeeds(ok(FIXTURE));
   assert.equal(read.state, 'ok');
