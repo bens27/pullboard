@@ -11,7 +11,10 @@ import { spawn } from 'node:child_process';
 import { AGENT_SHELL_MARKERS, SSH_SHELL_MARKERS } from '../src/person.js';
 import { RESUME_HOOK } from '../src/init.js';
 import { proofStats } from '../src/stats.js';
-import { applyFirst, pendingRowApply } from '../src/resume.js';
+import {
+  applyFirst,
+  pendingRowApply,
+} from '../src/resume.js';
 import { runFixtureChild, runFixtureGit } from './fixture-child.js';
 import { takeDefaultViewPort } from './view-port-fixture.js';
 
