@@ -171,6 +171,21 @@ test('an older mirror link with several unsent records migrates on a paged relay
   await assertMirrorMigrates(box, 'Mirrored short title');
 });
 
+test('a mirror linked before its relay served pages migrates after the upgrade, even with a snapshot saved from a failed try [B26,H16]', async (t) => {
+  const box = await relayClientFixture(t);
+  await box.link();
+  const link = legacyMirrorLink(box);
+  assert.equal(link.snapshotApiVersion, 2, 'the fixture link starts on the paged API');
+  // Recreate an API1-era link and the presentation snapshot an earlier try saved at the mirror sequence.
+  delete link.snapshotApiVersion;
+  link.snapshot = { sequence: link.sequence, sealed: 'A'.repeat(64) };
+  link.needsPresentation = true;
+  writeFileSync(box.linkFile, JSON.stringify(link) + '\n', { mode: 0o600 });
+  addUnmirroredItems(box, 2, 'Mirrored before the page upgrade');
+  await assertMirrorMigrates(box, 'Mirrored before the page upgrade');
+  assert.equal(JSON.parse(readFileSync(box.linkFile, 'utf8')).snapshot, undefined, 'the saved mirror snapshot is not retried');
+});
+
 test('an oversized mirror record an older client left pending is resealed under the limit, never retried forever [B26,H16]', async (t) => {
   const box = await relayClientFixture(t);
   await box.link();

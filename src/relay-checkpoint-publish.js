@@ -33,6 +33,23 @@ export function publishesCheckpoint(state) {
 }
 
 /**
+ * Whether a migrating mirror leaves its presentation to the next checkpoint: a machine credential on a paged relay.
+ * Why it drops a saved snapshot: one saved at a mirror sequence is never a valid paged checkpoint, so resending it would
+ * fail forever. A link from before its relay served pages learns the version from that snapshot's first refusal.
+ *
+ * @param {any} state - The relay link; its saved snapshot is dropped when the checkpoint carries the presentation.
+ * @returns {boolean}
+ */
+export function checkpointCarriesMirror(state) {
+  const carries = publishesCheckpoint(state) && state.snapshotApiVersion === 2;
+  if (carries) {
+    delete state.snapshot;
+    delete state.snapshotPresentationDigest;
+  }
+  return carries;
+}
+
+/**
  * Build the checkpoint publisher over relay.js's own link and transport helpers, which it cannot import without a cycle.
  *
  * @param {{ request: Function, saveLink: Function, loadLink: Function, linkFile: Function, readBoardKey: Function,

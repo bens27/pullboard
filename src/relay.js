@@ -126,7 +126,7 @@ import { withOutboxGuard } from './relay-outbox-guard.js';
 import { relayOrdering } from './relay-ordering.js';
 import { nudgeRelaySender } from './relay-local-first.js';
 import { checkpointPublisher } from './relay-checkpoint-publish.js';
-import { publishesCheckpoint } from './relay-checkpoint-publish.js';
+import { checkpointCarriesMirror } from './relay-checkpoint-publish.js';
 import {
   checkpointInBackground,
   requestCheckpointCheck,
@@ -752,6 +752,8 @@ async function flushMirror(root, file, state, io) {
     delete state.linkPending;
     saveLink(file, state);
   }
+  // A paged relay takes the presentation only in a checkpoint at its applied sequence, so the next checkpoint carries it.
+  const checkpointCarries = checkpointCarriesMirror(state);
   if (state.snapshot) {
     const pendingSnapshot = state.snapshot;
     const uploaded = await request(state, path + '/state', { method: 'PUT', body: pendingSnapshot }, io);
@@ -802,8 +804,6 @@ async function flushMirror(root, file, state, io) {
   }
   const presentation = relayPresentation(root);
   const digest = presentationDigest(presentation);
-  // A paged relay takes the presentation only in a checkpoint at its applied sequence, so the next checkpoint carries it.
-  const checkpointCarries = publishesCheckpoint(state) && state.snapshotApiVersion === 2;
   if (!checkpointCarries && (state.needsPresentation || state.presentationDigest !== digest)) {
     const document = relaySnapshot(root);
     if ((document.tables.event.at(-1)?.event_id ?? 0) !== state.cursor) throw new Refused('RELAY_PRESENTATION_PENDING', 'new local moves arrived while syncing; run pullboard status again before publishing their presentation');
