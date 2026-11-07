@@ -137,25 +137,37 @@ function unexplained(items, seats, explained) {
 }
 
 /**
- * Slots, use and line length of one machine-scope resource.
+ * Slots, use and line length of one machine-scope resource. The board writes a pool's row only once
+ * something takes a slot, so a pool nobody has used yet has the size its setting gives it.
  *
  * @param {any[]} resources
  * @param {string} name
+ * @param {number|null|undefined} configured
  * @returns {{ capacity: number, used: number, free: number, waiting: number, holders: any[] }}
  */
-function slotUse(resources, name) {
-  const found = resources.find((r) => r.name === name && r.scope === 'machine') ?? { capacity: 0, holders: [], line: [] };
+function slotUse(resources, name, configured) {
+  const found = resources.find((r) => r.name === name && r.scope === 'machine') ?? { capacity: configured ?? 0, holders: [], line: [] };
   const used = found.holders?.length ?? 0;
   return { capacity: found.capacity ?? 0, used, free: Math.max(0, (found.capacity ?? 0) - used), waiting: found.line?.length ?? 0, holders: found.holders ?? [] };
 }
+
+/** The board reads each section is drawn from; a section is unknown when any of them is missing. */
+const SECTION_READS = {
+  flags: ['health', 'status', 'list'],
+  halts: ['health'],
+  seats: ['status', 'list'],
+  capacity: ['resources', 'settings'],
+};
 
 /**
  * Build everything the panel draws from one round of board reads.
  *
  * @param {{ health?: any, status?: any, list?: any, resources?: any, settings?: any, now: number, errors?: string[] }} input
- * @returns {{ halts: any[], flags: any[], seats: any[], capacity: any, errors: string[] }}
+ * @returns {{ halts: any[], flags: any[], seats: any[], capacity: any, errors: string[], unread: string[] }}
  */
 export function boardModel({ health, status, list, resources, settings, now, errors = [] }) {
+  const reads = { health, status, list, resources, settings };
+  const unread = Object.keys(reads).filter((name) => reads[name] == null);
   const items = list?.items ?? [];
   const retired = new Set((health?.retired ?? []).map((r) => r.agent));
   const seats = (status?.agents ?? []).filter((a) => !retired.has(a.agent_id)).map((a) => ({
@@ -173,32 +185,62 @@ export function boardModel({ health, status, list, resources, settings, now, err
   const flags = health && status && list ? unexplained(items, seats, explained) : [];
   const machine = resources?.resources ?? [];
   const current = settings?.settings ?? {};
+  const gateSlots = current.gateSlots ?? null;
+  const browserSlots = current.browserSlots ?? resources?.browserSlots ?? null;
   const capacity = {
-    gate: slotUse(machine, 'gate'),
-    browser: slotUse(machine, 'browser'),
+    gate: slotUse(machine, 'gate', gateSlots),
+    browser: slotUse(machine, 'browser', browserSlots),
     runners: (resources?.runners ?? []).map((r) => ({
       host: r.host, slots: r.slots ?? 0, inUse: r.inUse ?? 0, free: Math.max(0, (r.slots ?? 0) - (r.inUse ?? 0)),
       browser: r.browser ?? 0, browserInUse: r.browserInUse ?? 0, unavailable: Boolean(r.unavailable),
     })),
-    gateSlots: current.gateSlots ?? null,
-    browserSlots: current.browserSlots ?? resources?.browserSlots ?? null,
+    gateSlots,
+    browserSlots,
     shortSlots: current.gate?.shortSlots ?? resources?.shortSlots ?? 0,
     runnersFirst: Boolean(current.gate?.runnersFirst),
+    // A ±1 move is relative to the settings read; without it the panel cannot know what +1 means.
+    controls: Number.isSafeInteger(current.gateSlots) && Number.isSafeInteger(current.browserSlots),
   };
-  return { halts: haltGroups(findings), flags, seats, capacity, errors: [...errors] };
+  return { halts: haltGroups(findings), flags, seats, capacity, errors: [...errors], unread };
 }
 
 /**
- * The `pullboard settings` move for one −/+ click, or why it would be refused: gateSlots never
- * drops below browserSlots, and 0 slots of either kind needs a registered runner.
+ * The line a section shows instead of rows: unknown when a read it is drawn from failed, so an
+ * empty section never passes for a calm one; otherwise, once every read succeeded, its calm text
+ * when it has nothing to show.
+ *
+ * @param {{ flags: any[], halts: any[], seats: any[], unread?: string[] }} model
+ * @param {'flags'|'halts'|'seats'|'capacity'} section
+ * @returns {string|null}
+ */
+export function sectionNote(model, section) {
+  const missing = (SECTION_READS[section] ?? []).filter((name) => (model.unread ?? []).includes(name));
+  if (missing.length) {
+    const names = missing.length === 1 ? missing[0] : missing.slice(0, -1).join(', ') + ' and ' + missing.at(-1);
+    return `Unknown: the ${names} read${missing.length === 1 ? '' : 's'} failed.`;
+  }
+  // A calm line vouches for the board as a whole, so none shows while any read is missing.
+  if ((model.unread ?? []).length) return null;
+  if (section === 'flags') return model.flags.length ? null : 'Every halt has a recorded reason.';
+  if (section === 'halts') return model.halts.length ? null : 'Nothing is stuck.';
+  if (section === 'seats') return model.seats.length ? null : 'No seats.';
+  return null;
+}
+
+/**
+ * The `pullboard settings` move for one −/+ click, or why it would be refused: both current counts
+ * must be known, gateSlots never drops below browserSlots, and 0 slots of either kind needs a
+ * registered runner.
  *
  * @param {string} name
  * @param {number} delta
- * @param {{ gateSlots: number, browserSlots: number, runners: number }} state
+ * @param {{ gateSlots: number|null|undefined, browserSlots: number|null|undefined, runners: number }} state
  * @returns {{ args: string[] } | { refused: string }}
  */
 export function slotMove(name, delta, { gateSlots, browserSlots, runners }) {
   if (name !== 'gateSlots' && name !== 'browserSlots') return { refused: `unknown setting ${name}` };
+  // A missing count would read as 0 and turn + into a cut, so no move is made from it.
+  if (!Number.isSafeInteger(gateSlots) || !Number.isSafeInteger(browserSlots)) return { refused: 'current slot counts are unknown; refresh once settings can be read' };
   const next = (name === 'gateSlots' ? gateSlots : browserSlots) + delta;
   if (!Number.isSafeInteger(next) || next < 0) return { refused: `${name} cannot go below 0` };
   if (name === 'gateSlots' && next < browserSlots) return { refused: `gateSlots cannot be lower than browserSlots (${browserSlots})` };
@@ -206,4 +248,3 @@ export function slotMove(name, delta, { gateSlots, browserSlots, runners }) {
   if (next === 0 && !runners) return { refused: `${name} 0 needs a registered runner` };
   return { args: ['settings', name, String(next)] };
 }
-export function sectionNote() { return undefined; }

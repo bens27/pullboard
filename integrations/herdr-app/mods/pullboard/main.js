@@ -5,7 +5,7 @@
 import { View, div } from 'gpui-kit';
 import { v_flex, h_flex } from 'gpui-base';
 import { theme, props, focused, exec } from 'herdr';
-import { boardModel, slotMove } from './read-model.js';
+import { boardModel, sectionNote, slotMove } from './read-model.js';
 import { readBoard, runMove } from './cli.js';
 
 // Each refresh starts five CLI reads; 15 s keeps the panel current without a steady load.
@@ -47,7 +47,7 @@ export default class Pullboard extends View {
 
   /** Change gateSlots or browserSlots by one through `pullboard settings`, then read again. */
   move(name, delta, capacity, cx) {
-    if (this.moveBusy || !this.board) return;
+    if (this.moveBusy || !this.board || !capacity.controls) return;
     const step = slotMove(name, delta, { gateSlots: capacity.gateSlots, browserSlots: capacity.browserSlots, runners: capacity.runners.length });
     if ('refused' in step) { this.moveMessage = step.refused; cx.notify(); return; }
     this.moveBusy = true;
@@ -58,9 +58,10 @@ export default class Pullboard extends View {
     });
   }
 
-  /** A small click-only button. */
-  button(id, label, handler) {
-    return div().id(id).px(8).py(2).rounded(4).bg(theme().raised).text_color(theme().accent).on_click(handler).child(label);
+  /** A small click-only button; a disabled one is drawn muted and takes no clicks. */
+  button(id, label, handler, enabled = true) {
+    const el = div().id(id).px(8).py(2).rounded(4).bg(theme().raised).text_color(enabled ? theme().accent : theme().muted).child(label);
+    return enabled ? el.on_click(handler) : el;
   }
 
   /** A section with a bold title and its rows. */
@@ -103,8 +104,8 @@ export default class Pullboard extends View {
     const t = theme();
     return h_flex().id('slots-' + name).gap(8).text_size(12)
       .child(div().child(`${label}: ${use.used}/${use.capacity} used, ${use.free} free${use.waiting ? ', ' + use.waiting + ' waiting' : ''}`))
-      .child(this.button(name + '-down', '−', (_e, cx) => this.move(name, -1, capacity, cx)))
-      .child(this.button(name + '-up', '+', (_e, cx) => this.move(name, 1, capacity, cx)))
+      .child(this.button(name + '-down', '−', (_e, cx) => this.move(name, -1, capacity, cx), capacity.controls))
+      .child(this.button(name + '-up', '+', (_e, cx) => this.move(name, 1, capacity, cx), capacity.controls))
       .when(this.moveBusy, (el) => el.child(div().text_color(t.muted).child('…')));
   }
 
@@ -119,17 +120,28 @@ export default class Pullboard extends View {
       .child(div().text_size(11).text_color(t.muted).child(this.board ?? this.folder() ?? 'No board folder'));
     for (const error of model.errors) root.child(div().text_size(12).text_color(t.blocked).child(error));
     if (!this.reads) return root.child(div().text_color(t.muted).child('Reading the board…'));
-    root.child(this.section('flags', `Needs attention (${model.flags.length})`,
-      model.flags.length ? model.flags.map((f) => this.flagRow(f)) : [div().text_size(12).text_color(t.muted).child('Every halt has a recorded reason.')]));
+    const note = (section) => {
+      const text = sectionNote(model, section);
+      return text && div().text_size(12).text_color(text.startsWith('Unknown') ? t.blocked : t.muted).child(text);
+    };
+    // A count from a failed read would be a guess, so the heading shows ? instead.
+    const known = (section, count) => (sectionNote(model, section)?.startsWith('Unknown') ? '?' : count);
+    const flagsNote = note('flags');
+    root.child(this.section('flags', `Needs attention (${known('flags', model.flags.length)})`,
+      flagsNote ? [flagsNote] : model.flags.map((f) => this.flagRow(f))));
+    const haltsNote = note('halts');
     const halts = model.halts.flatMap((g) => [div().text_size(12).text_color(t.muted).child(`${g.cause} (${g.rows.length})`), ...g.rows.map((r) => this.haltRow(r))]);
-    root.child(this.section('halts', `Halts (${model.halts.reduce((n, g) => n + g.rows.length, 0)})`,
-      halts.length ? halts : [div().text_size(12).text_color(t.muted).child('Nothing is stuck.')]));
-    root.child(this.section('seats', `Seats (${model.seats.filter((s) => s.presence === 'live').length} live)`,
-      model.seats.length ? model.seats.map((s) => this.seatRow(s)) : [div().text_size(12).text_color(t.muted).child('No seats.')]));
+    root.child(this.section('halts', `Halts (${known('halts', model.halts.reduce((n, g) => n + g.rows.length, 0))})`,
+      haltsNote ? [haltsNote] : halts));
+    const seatsNote = note('seats');
+    root.child(this.section('seats', `Seats (${known('seats', model.seats.filter((s) => s.presence === 'live').length)} live)`,
+      seatsNote ? [seatsNote] : model.seats.map((s) => this.seatRow(s))));
     const c = model.capacity;
     const runners = c.runners.map((r) => div().id('runner-' + r.host).text_size(12)
       .child(`${r.host}: ${r.inUse}/${r.slots} slots, ${r.browserInUse}/${r.browser} browser${r.unavailable ? ', unavailable' : ''}`));
+    const capacityNote = note('capacity');
     root.child(this.section('capacity', 'Test capacity', [
+      ...(capacityNote ? [capacityNote] : []),
       this.slotRow('gateSlots', 'Gate', c.gate, c, cx),
       this.slotRow('browserSlots', 'Browser', c.browser, c, cx),
       div().text_size(11).text_color(t.muted).child(`short slots ${c.shortSlots} · runners first ${c.runnersFirst ? 'on' : 'off'}`),

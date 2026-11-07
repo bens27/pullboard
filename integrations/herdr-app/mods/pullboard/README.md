@@ -9,8 +9,8 @@ A Herdr app panel for one Pullboard board. Every 15 seconds it runs, in the boar
     pullboard settings --json
 
 `exec` runs them with your own PATH and environment, so the panel needs no token or port.
-A read that fails shows as a red error line naming the command; the panel never shows a
-failed read as an empty board.
+A read that fails shows as a red error line naming the command, and each section drawn from
+it says Unknown instead of its calm text; the panel never shows a failed read as an empty board.
 
 ## What it shows
 
@@ -26,10 +26,12 @@ failed read as an empty board.
 - **Halts**: every `health` finding, grouped by cause, with why, the next step and who takes it.
 - **Seats**: live, idle or gone, lane, route, model and the items each holds. Retired seats are left out.
 - **Test capacity**: gate and browser slots used and free, the line waiting for each, short
-  slots, runners-first, and each registered runner's slots. The − and + buttons run
+  slots, runners-first, and each registered runner's slots. A pool nobody has used yet shows
+  the size its setting gives it. The − and + buttons run
   `pullboard settings gateSlots <n>` or `browserSlots <n>`; a move the board would refuse
   (gate below browser, browser above gate, 0 with no runner) is refused in the panel first,
-  and the board's own answer or refusal shows under the section.
+  and the board's own answer or refusal shows under the section. While `settings` cannot be
+  read the buttons are off, since a move is relative to the current count.
 
 The slot buttons are click-only: the panel registers no `herdr-app do` command for them.
 
