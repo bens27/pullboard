@@ -15,14 +15,12 @@ export function shellQuote(value) {
 }
 
 /**
- * Fill a step's `{key}` placeholders from the person's answers, each value shell-quoted. Only keys
- * the step declares as prompts are filled, so shell text such as `${HOME}` passes through. A step
- * with a declared placeholder is refused when it uses ", a backtick, \ or $(, since each can put
- * the answer back inside a shell parse, and << or a line break, since a here-document body expands
- * $( even inside ' quotes, and #, since a comment can swallow the opening quote of an answer. An
- * answer must be one line, so a line break in it can never start a command of its own. With those
- * gone single quotes cannot nest, so a
- * placeholder between two ' is refused too: `'{note}'` answered `$(cmd)` would run cmd.
+ * Fill a step's `{key}` placeholders from the person's answers, each value shell-quoted; a step with
+ * no declared placeholder runs as written. A step with one is an allowlist, not a denylist, since
+ * every shell keeps finding new ways to re-parse a quoted word ($(, heredocs, comments, zsh's (e)
+ * flag): each placeholder must stand alone as a word between spaces, and the rest may hold only
+ * letters, digits, spaces and _ . / : @ % + , = -. An answer must be one line, so it can never
+ * start a command of its own.
  *
  * @param {{ command: string, prompts?: { key: string, default?: string }[] }} step
  * @param {Record<string, string>} values
@@ -31,26 +29,28 @@ export function shellQuote(value) {
 export function fillCommand(step, values = {}) {
   const prompts = new Map((step.prompts ?? []).map((prompt) => [prompt.key, prompt]));
   const template = String(step.command ?? '');
-  const placeholder = /\{([A-Za-z_][\w-]*)\}/uy;
-  const hits = [];
-  let quoted = false;
-  for (let at = 0; at < template.length; at += 1) {
-    if (template[at] === "'") { quoted = !quoted; continue; }
-    placeholder.lastIndex = at;
-    const hit = template[at - 1] !== '$' ? placeholder.exec(template) : null;
-    if (hit && prompts.has(hit[1])) hits.push({ at, key: hit[1], length: hit[0].length, quoted });
-  }
+  const hits = [...template.matchAll(/\{([A-Za-z_][\w-]*)\}/gu)]
+    .filter((hit) => prompts.has(hit[1]))
+    .map((hit) => ({ at: hit.index, key: hit[1], length: hit[0].length }));
   if (!hits.length) return template;
-  const unsafe = /["`\\\n\r#]|\$\(|<</u.test(template) ? hits[0] : hits.find((hit) => hit.quoted);
+  let rest = '';
+  let from = 0;
+  for (const { at, length } of hits) {
+    rest += template.slice(from, at);
+    from = at + length;
+  }
+  rest += template.slice(from);
+  const loose = hits.find(({ at, length }) => (at > 0 && template[at - 1] !== ' ') || (at + length < template.length && template[at + length] !== ' '));
+  const unsafe = loose ?? (/^[A-Za-z0-9 _./:@%+,=-]*$/u.test(rest) ? null : hits[0]);
   if (unsafe) {
-    throw new Error(`placeholder {${unsafe.key}} cannot be filled safely: a step with one may not use ", \`, \\, $(, <<, # or a line break, or quote it in: ${template}`);
+    throw new Error(`placeholder {${unsafe.key}} cannot be filled safely: a step with a placeholder must use it as a bare word and only letters, digits, spaces and _ . / : @ % + , = - in: ${template}`);
   }
   const answers = new Map(hits.map(({ key }) => [key, Object.hasOwn(values, key) ? String(values[key]) : String(prompts.get(key).default ?? '')]));
   for (const [key, value] of answers) {
     if (/[\n\r\0]/u.test(value)) throw new Error(`answer for {${key}} must be one line: a line break or NUL in it would run as its own command`);
   }
   let out = '';
-  let from = 0;
+  from = 0;
   for (const { at, key, length } of hits) {
     out += template.slice(from, at) + shellQuote(answers.get(key));
     from = at + length;

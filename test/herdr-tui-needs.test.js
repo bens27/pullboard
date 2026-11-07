@@ -24,12 +24,13 @@ test('a value is single-quoted with each quote closed, escaped and reopened [B26
 });
 
 test('only declared prompt keys are filled, each shell-quoted, defaults when unanswered [B26]', () => {
-  const step = { command: 'pullboard spec signoff G9 --note {note} --who {who} ${HOME} {other}', prompts: [{ key: 'note' }, { key: 'who', default: 'me' }] };
-  assert.equal(fillCommand(step, { note: "it's fine; rm -rf /" }), "pullboard spec signoff G9 --note 'it'\\''s fine; rm -rf /' --who 'me' ${HOME} {other}");
+  const step = { command: 'pullboard spec signoff G9 --by BS --note {note} --who {who}', prompts: [{ key: 'note' }, { key: 'who', default: 'me' }] };
+  assert.equal(fillCommand(step, { note: "it's fine; rm -rf /" }), "pullboard spec signoff G9 --by BS --note 'it'\\''s fine; rm -rf /' --who 'me'");
+  assert.equal(fillCommand({ command: 'pullboard relay join {code}', prompts: [{ key: 'code' }] }, { code: 'ab-12' }), "pullboard relay join 'ab-12'");
   assert.equal(fillCommand({ command: 'pullboard relay status' }, {}), 'pullboard relay status');
 });
 
-test('a declared placeholder near a quote, backslash or $( is refused, since the answer could run as shell [B26]', () => {
+test('a placeholder that is not a bare word among plain characters is refused, since the answer could run as shell [B26]', () => {
   const prompts = [{ key: 'note' }];
   const attack = { note: '$(touch /tmp/pwned)' };
   const refused = [
@@ -38,9 +39,10 @@ test('a declared placeholder near a quote, backslash or $( is refused, since the
     "echo \\'{note} '{other}' \"${HOME}\"",
     'cat <<EOF\n{note}\nEOF', 'cat <<-EOF\r{note}', 'cat <<< {note}', 'echo {note}\necho done',
     'echo ok # {note}', 'echo {note}#',
+    'print -r -- ${(eQ):-{note}}', '--x={note}', 'echo {note} ${HOME}', "echo {note} '{x'", 'echo {note} {other}', 'echo\t{note}',
   ];
   for (const command of refused) assert.throws(() => fillCommand({ command, prompts }, attack), /cannot be filled safely/, command);
-  assert.equal(fillCommand({ command: "echo {note} ${HOME} '{x'", prompts }, attack), "echo '$(touch /tmp/pwned)' ${HOME} '{x'");
+  assert.equal(fillCommand({ command: 'echo {note}', prompts }, attack), "echo '$(touch /tmp/pwned)'");
   assert.equal(fillCommand({ command: 'echo "$(date)" {other}', prompts }, attack), 'echo "$(date)" {other}');
 });
 

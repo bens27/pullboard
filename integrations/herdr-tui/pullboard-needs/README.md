@@ -4,8 +4,9 @@ A Herdr popup listing what needs you on one Pullboard board. It reads `pullboard
 in the board's folder, and runs each step of a need in order, in a new tab of the workspace
 you were in. It never writes the board itself: an ask's step is marked done by the tab's script
 with `pullboard ask done <id> --step <n> --as person` after its command exits 0, so agents pick
-it up at their next check and are never interrupted. A step whose prompt sits inside '...', or
-that uses `"`, a backtick, `\` or `$(`, is refused with the reason and never runs.
+it up at their next check and are never interrupted. A step with a prompt must use it as a bare
+word, with only letters, digits, spaces and `_ . / : @ % + , = -` around it, and each answer
+must be one line; anything else is refused with the reason and never runs.
 
 ## Install
 
