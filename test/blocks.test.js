@@ -259,3 +259,30 @@ test('a Pullboard block reaches whoever can clear it and repeats are counted [C6
   assert.deepEqual([...swept].sort(), [...personCodes].sort());
   assert.ok((await apiNeeds(api, box.repo)).needs.some(row => row.id.startsWith('block:B26_PERSON_APPROVAL ')));
 });
+
+test('an ask block clears only when the same ask, step and verb completes; other targets stay apart [B26]', () => {
+  const box = e2e.project();
+  const info = repoInfo(box.repo);
+  const io = (positionals, cliOperation = 'ask', values = {}) => ({ cwd: box.repo, personChannel: 'agent', err: () => {},
+    relayCommand: { cliOperation, positionals, values } });
+  const refused = io(['done', 'ask:3f9a0c12'], 'ask');
+  recordBlock(info.commonDir, { at: '2026-11-07T20:00:00.000Z', code: 'ASK_PERSON_ONLY', command: 'pullboard ask', by: 'coordinator',
+    path: box.repo, audience: 'person', reason: 'the ask is the person\'s alone', step: 'mark it done at the main checkout',
+    moveKey: blockMoveKey(refused), moveKeys: blockMoveKeys(refused), owner: 'person' });
+  for (const [move, why] of [[io(['done', '7b1e4d20']), 'another ask'], [io(['drop', '3f9a0c12']), 'dropping it'],
+    [io(['done', '3f9a0c12'], 'ask', { step: '2' }), 'another step'], [io(['File one'], 'ask'), 'filing an ask']]) {
+    clearCompletedBlocks(move, new Date('2026-11-07T20:01:00.000Z'));
+    assert.equal(readBlocks(info.commonDir).length, 1, `${why} leaves the ask's person block`);
+  }
+  clearCompletedBlocks(io(['done', '3f9a0c12']), new Date('2026-11-07T20:02:00.000Z'));
+  assert.deepEqual(readBlocks(info.commonDir), [], 'the same ask done, ask: prefix or not, clears it');
+
+  const distinct = (a, b, why) => assert.notEqual(blockMoveKey(a), blockMoveKey(b), why);
+  distinct(io(['sign', '3'], 'bar'), io(['sign', '4'], 'bar'), 'bar sign names its item');
+  distinct(io(['ready', 'on'], 'bar'), io(['ready', 'off'], 'bar'), 'bar ready names on or off');
+  distinct(io(['3'], 'done'), io(['4'], 'done'), 'done names its item');
+  distinct(io(['approve', '3'], 'intake'), io(['approve', '4'], 'intake'), 'intake approve names its item');
+  distinct(io(['acme/web#3'], 'move', { to: '~acme/web' }), io(['acme/web#4'], 'move', { to: '~acme/web' }), 'move names its item');
+  distinct(io(['3', 'api'], 'companion', { key: 'a' }), io(['3', 'api'], 'companion', { key: 'b' }), 'companion names its key');
+  assert.equal(blockMoveKey(io(['#3'], 'done')), blockMoveKey(io(['3'], 'done')), 'done accepts the #id spelling');
+});

@@ -81,7 +81,7 @@ export function blockMoveKey(io) {
     : name === 'land' && command.values?.waive !== undefined ? 'waive'
     : ['verify', 'fact'].includes(name) ? words[1] ?? ''
     : name === 'check' && words[0] === 'accept' ? 'accept' : branches.has(name) ? words[0] ?? '' : '';
-  const itemTargets = new Set(['answer', 'claim', 'submit', 'verify', 'check', 'show', 'release', 'withdraw', 'merged', 'fact', 'escalate', 'hold', 'edit', 'refreeze', 'reopen', 'pass', 'log', 'why']);
+  const itemTargets = new Set(['answer', 'claim', 'submit', 'verify', 'check', 'show', 'release', 'withdraw', 'merged', 'fact', 'escalate', 'hold', 'edit', 'refreeze', 'reopen', 'pass', 'log', 'why', 'done']);
   const namedTargets = new Set(['shout', 'join', 'worktree', 'list', 'inbox', 'prompt', 'forget', 'import', 'add']);
   let numericItem = itemTargets.has(name);
   let target = numericItem || namedTargets.has(name) ? words[0] ?? '' : '';
@@ -102,6 +102,24 @@ export function blockMoveKey(io) {
     verb += ':' + (words[1] ?? '');
     target = words[2] ?? '';
   }
+  // A person-only ask refused for one seat must not clear when that seat completes another ask or step [B26].
+  if (name === 'ask' && ['done', 'drop'].includes(words[0])) {
+    verb = words[0] === 'done' ? `done:${[command.values?.step ?? []].flat().join(',')}` : 'drop';
+    target = String(words[1] ?? '').replace(/^ask:/u, '');
+  }
+  if (name === 'bar') {
+    verb = ['sign', 'ready'].includes(words[0]) ? words[0] : '';
+    target = verb === 'sign' ? words[1] ?? '' : verb === 'ready' ? `ready:${words[1] ?? ''}` : words[0] ?? '';
+    numericItem = verb !== 'ready';
+  }
+  if (name === 'intake') {
+    verb = words[0] === 'approve' ? 'approve' : '';
+    target = (verb ? words[1] : words[0]) ?? '';
+    numericItem = Boolean(verb);
+  }
+  // The destination and the companion key name which move it was, not prose.
+  if (name === 'move') target = { item: words[0] ?? '', to: command.values?.to ?? '' };
+  if (name === 'companion') target = { parent: String(Number(String(words[0] ?? '').replace(/^#/u, ''))), lane: words[1] ?? '', key: command.values?.key ?? '' };
   if (name === 'blueprint' && verb === 'add') {
     target = [...new Set([words[1], ...[].concat(command.values?.blueprint ?? [])].filter(Boolean))].sort();
   }
