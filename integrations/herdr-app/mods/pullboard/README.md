@@ -25,6 +25,18 @@ it says Unknown instead of its calm text; the panel never shows a failed read as
   refused with the reason instead of filled. A pullboard
   without the `needs` command shows one quiet line instead.
 
+  To run several at once, click **[ ] Select** on each need (it turns to **[x] Selected**;
+  click again to drop it). A need whose next step is missing, names no folder or has a
+  placeholder that cannot be filled safely shows **Not selectable** with the reason
+  instead. **Run selected (N)** then asks every prompt of every selected step, top to
+  bottom, one at a time with its default prefilled; a selected ask brings all its remaining
+  steps. One numbered screen lists each filled command with its folder, and
+  **Confirm: run N steps in new tab** opens one tab that runs them in order: a
+  `[k/N] <label>  (in <folder>)` header before each, `pullboard ask done` after each ask
+  step that exits 0, a stop at the first non-zero exit
+  (`stopped at [k/N]: exit <code>; later steps not run`), then a done / failed / not run
+  line per step, and the shell stays open. Cancel at any point runs nothing.
+
 - **Needs attention**: halted work that `pullboard health` gives no reason for, flagged,
   with a recommendation and the command that acts on it:
   - a claimed item whose holder is idle or gone: resume the holder or release the claim;
@@ -80,5 +92,6 @@ app home.
 - `read-model.js`: pure; turns the five reads into what the panel draws. Tests import it.
 - `cli.js`: runs the reads and slot moves through Herdr's `exec`.
 - `needs-model.js`: pure; quoting, filling prompts, step state and the launch command.
+- `needs-batch.js`: pure; which needs can join a batch, its prompts, steps and one script.
 - `needs-view.js`: the Needs-you section.
 - `main.js`: the Herdr view.

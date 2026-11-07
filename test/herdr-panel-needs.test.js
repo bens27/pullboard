@@ -20,6 +20,14 @@ import {
   stepScript,
   stepStates,
 } from '../integrations/herdr-app/mods/pullboard/needs-model.js';
+import {
+  BatchFlow,
+  batchEntries,
+  batchScript,
+  planBatch,
+  selectable,
+  toggleNeed,
+} from '../integrations/herdr-app/mods/pullboard/needs-batch.js';
 
 const FIXTURE = readFileSync(new URL('../integrations/herdr-app/mods/pullboard/test/needs.json', import.meta.url), 'utf8');
 const ok = (stdout) => ({ code: 0, stdout, stderr: '' });
@@ -134,4 +142,96 @@ test('a confirmed run fills the next step and names its ask [B26]', () => {
   assert.equal(plan.launch.args.folder, '/tmp/pullboard-needs-fixture');
   assert.match(plan.launch.args.argv[2], /cd '\/r' && pullboard ask done '3f9a0c12' --step 2 --as person/);
   assert.match(planRun({ need: { ...signoff, steps: [{ ...signoff.steps[0], cwd: '' }] }, n: 1, values: {}, spaces: [] }).refused, /no folder/);
+});
+
+/** An ask with steps 1-3 left and a board need, each running in `cwd`. */
+function batchNeeds(cwd) {
+  const board = { id: 'signoff:G9', source: 'board', title: 'Sign G9', next: 1, steps: [{ n: 1, label: 'Sign', cwd, command: 'echo signed {note}', prompts: [{ key: 'note', default: 'ok' }] }] };
+  const ask = { id: 'ask:3f9a0c12', source: 'ask', title: 'Relay', next: 2, steps: [
+    { n: 1, label: 'Done already', cwd, command: 'true', done: true },
+    { n: 2, label: 'Two', cwd, command: 'echo two {device}', prompts: [{ key: 'device', default: "Ben's Mac" }] },
+    { n: 3, label: 'Three', cwd, command: 'echo three' },
+  ] };
+  return [board, ask];
+}
+
+test('a batch runs in list order and a selected ask brings all its remaining steps [B26]', () => {
+  const [board, ask] = batchNeeds('/b');
+  const entries = batchEntries([board, ask], new Set([ask.id, board.id]));
+  assert.deepEqual(entries.map((e) => [e.need.id, e.step.n]), [['signoff:G9', 1], ['ask:3f9a0c12', 2], ['ask:3f9a0c12', 3]]);
+  assert.deepEqual(batchEntries([board, ask], new Set([ask.id])).map((e) => e.step.n), [2, 3]);
+  const plan = planBatch({ entries, values: [{ note: 'x' }, {}, {}], root: '/r', spaces: [] });
+  assert.deepEqual(plan.steps.map((s) => s.command), ["echo signed 'x'", "echo two 'Ben'\\''s Mac'", 'echo three']);
+  assert.equal(plan.launch.command, 'space.new');
+  assert.equal(plan.launch.args.tab, 'Needs you · 3 steps');
+});
+
+test('a need with no runnable step, no folder or an unsafe placeholder cannot be selected [B26]', () => {
+  const [board, ask] = batchNeeds('/b');
+  assert.equal(selectable(board), null);
+  assert.match(selectable({ ...board, next: null }), /no step to run/);
+  assert.match(selectable({ ...board, steps: [{ ...board.steps[0], cwd: '' }] }), /no folder/);
+  const unsafeLater = { ...ask, steps: ask.steps.map((s) => (s.n === 3 ? { ...s, command: 'echo "{x}"', prompts: [{ key: 'x' }] } : s)) };
+  assert.match(selectable(unsafeLater), /step 3: placeholder \{x\} cannot be filled safely/);
+  const picked = toggleNeed(new Set(), unsafeLater);
+  assert.match(picked.refused, /cannot be filled safely/);
+  assert.equal(picked.selected.size, 0);
+  assert.deepEqual([...toggleNeed(new Set(), board).selected], [board.id]);
+  assert.deepEqual([...toggleNeed(new Set([board.id]), board).selected], []);
+  assert.deepEqual(batchEntries([unsafeLater], new Set([unsafeLater.id])), []);
+});
+
+test('a batch asks each prompt in order, refuses a two-line answer, and cancel runs nothing [B26]', () => {
+  const [board, ask] = batchNeeds('/b');
+  const runs = [];
+  const run = (command, args) => runs.push([command, args]);
+  const flow = new BatchFlow([board, ask], new Set([board.id, ask.id]));
+  assert.deepEqual([flow.prompt().key, flow.prompt().value, flow.prompt().k], ['note', 'ok', 1]);
+  assert.match(flow.answer('a\nb'), /must be one line/);
+  assert.equal(flow.answer('fine'), null);
+  assert.deepEqual([flow.prompt().key, flow.prompt().value, flow.prompt().k], ['device', "Ben's Mac", 2]);
+  assert.equal(flow.answer('phone'), null);
+  assert.equal(flow.prompt(), null);
+  assert.deepEqual(flow.review().map((s) => [s.k, s.cwd, s.command]), [[1, '/b', "echo signed 'fine'"], [2, '/b', "echo two 'phone'"], [3, '/b', 'echo three']]);
+  flow.cancel();
+  assert.match(flow.confirm({ root: '/r', spaces: [], run }).refused, /cancelled/);
+  assert.deepEqual(runs, []);
+  const early = new BatchFlow([board, ask], new Set([board.id]));
+  early.cancel();
+  assert.match(early.confirm({ root: '/r', spaces: [], run }).refused, /cancelled/);
+  const unfinished = new BatchFlow([board], new Set([board.id]));
+  assert.match(unfinished.confirm({ root: '/r', spaces: [], run }).refused, /prompt/);
+  assert.deepEqual(runs, []);
+  const done = new BatchFlow([ask], new Set([ask.id]));
+  done.answer('mac');
+  assert.equal(done.confirm({ root: '/r', spaces: [], run }).count, 2);
+  assert.equal(runs.length, 1);
+  assert.match(runs[0][1].argv[2], /\[1\/2\] Relay · Two/);
+});
+
+test('a batch script stops at the first failure and marks only the ask steps that passed [B26]', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-batch-'));
+  try {
+    const log = join(dir, 'calls');
+    const bin = join(dir, 'bin');
+    spawnSync('/bin/mkdir', [bin, join(dir, 'work')]);
+    writeFileSync(join(bin, 'pullboard'), `#!/bin/sh\necho "$PWD $*" >> '${log}'\n`);
+    chmodSync(join(bin, 'pullboard'), 0o755);
+    const go = (steps) => spawnSync('/bin/zsh', ['-fc', batchScript({ steps, root: dir }).replace(/\nexec .*$/, '')],
+      { encoding: 'utf8', cwd: tmpdir(), env: { PATH: `${bin}:/usr/bin:/bin` } });
+    const work = join(dir, 'work');
+    const step = (label, command, ask = null, n = 1) => ({ label, cwd: work, command, askId: ask, step: n });
+    const out = go([step('Board', 'true'), step('One', 'pwd', 'abc', 2), step("It's two", 'false', 'abc', 3), step('Four', 'touch ran', 'abc', 4)]);
+    assert.match(out.stdout, new RegExp(`\\[1/4\\] Board  \\(in ${work}\\)`));
+    assert.match(out.stdout, new RegExp(`\\[2/4\\] One  \\(in ${work}\\)\\n${work}\\n`));
+    assert.match(out.stdout, /stopped at \[3\/4\]: exit 1; later steps not run/);
+    assert.match(out.stdout, /\[1\/4\] done: Board\n\[2\/4\] done: One\n\[3\/4\] failed: It's two\n\[4\/4\] not run: Four/);
+    assert.equal(readFileSync(log, 'utf8'), `${dir} ask done abc --step 2 --as person\n`);
+    assert.throws(() => readFileSync(join(work, 'ran')));
+    rmSync(log);
+    const all = go([step('A', 'exit 0', 'abc', 1), step('B', 'cd /', 'abc', 2)]);
+    assert.match(all.stdout, /\[1\/2\] done: A\n\[2\/2\] done: B/);
+    assert.equal(readFileSync(log, 'utf8'), `${dir} ask done abc --step 1 --as person\n${dir} ask done abc --step 2 --as person\n`);
+    assert.match(batchScript({ steps: [step('x', 'true')], root: dir }), /\nexec \/bin\/zsh -l$/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
