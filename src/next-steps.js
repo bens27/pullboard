@@ -98,6 +98,7 @@ const NOT_BLOCKS = new Set(['USAGE', 'UNKNOWN_COMMAND']);
  */
 export const BLOCK_AUDIENCE = Object.freeze({
   AGENT_APPROVAL_REQUIRED: 'person',
+  ASK_PERSON_ONLY: 'person',
   B26_PERSON_APPROVAL: 'person',
   B26_PERSON_CHANNEL: 'person',
   CHECK_ACCEPT_PERSON_ONLY: 'person',
