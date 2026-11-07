@@ -53,7 +53,7 @@ function refusal(step, values) {
 function confirm(state) {
   const refused = refusal(state.step, state.values);
   if (refused) return refused(state);
-  return { ...state, mode: 'confirm', command: fillCommand(state.step, state.values) };
+  return { ...state, mode: 'confirm', command: fillCommand(state.step, state.values), scroll: 0 };
 }
 
 function promptKey(state, key) {
@@ -129,6 +129,10 @@ function batchKey(state, key) {
     return { state: { ...state, mode: 'list', batch: null, selected: [] }, effect };
   }
   if (key === 'n' || key === 'escape') return { state: { ...state, mode: 'list', batch: null } };
+  return scrollKey(state, key);
+}
+
+function scrollKey(state, key) {
   if (key === 'down' || key === 'j') return { state: { ...state, scroll: state.scroll + 1 } };
   if (key === 'up' || key === 'k') return { state: { ...state, scroll: Math.max(0, state.scroll - 1) } };
   return { state };
@@ -151,7 +155,7 @@ export function press(state, key) {
       return { state: { ...state, mode: 'need' }, effect: { run: { need: state.need, step: state.step, command: state.command, root: state.root } } };
     }
     if (key === 'n' || key === 'escape') return { state: { ...state, mode: 'need', step: null } };
-    return { state };
+    return scrollKey(state, key);
   }
   if (state.mode === 'need') {
     if (key === 'enter') return beginStep(state);
@@ -198,7 +202,15 @@ function hardWrap(text, first, rest, cols) {
   return lines;
 }
 
-// The footer stays on screen however long the batch is, so the person can always confirm or cancel.
+// A confirm screen keeps its footer on the last row however long it is, so the person can always
+// confirm or cancel, and scrolls the rest so no command or folder they authorize is out of reach.
+function paged(body, footer, scroll, rows) {
+  const room = Math.max(0, rows - 1);
+  const top = Math.min(scroll, Math.max(0, body.length - room));
+  const more = body.length > room ? 'up/down scroll   ' : '';
+  return [...body.slice(top, top + room), `${more}${footer}`];
+}
+
 function batchLines(state, cols, rows) {
   const { filled } = state.batch;
   const body = [`Run these ${filled.length} steps in order in one new tab?`, ''];
@@ -208,10 +220,7 @@ function batchLines(state, cols, rows) {
     body.push(...hardWrap(command, number, indent, cols), ...hardWrap(step.cwd, `${indent}in `, `${indent}   `, cols));
   });
   body.push('', ...wrap('Each ask step is marked done when it exits 0. The first step that fails stops the rest.', Math.max(20, cols - 2)), '');
-  const room = Math.max(0, rows - 1);
-  const scroll = Math.min(state.scroll, Math.max(0, body.length - room));
-  const more = body.length > room ? 'up/down scroll   ' : '';
-  return [...body.slice(scroll, scroll + room), `${more}y run all   n cancel`];
+  return paged(body, 'y run all   n cancel', state.scroll, rows);
 }
 
 const MARK = { done: '[x]', next: '[>]', waiting: '[ ]' };
@@ -266,9 +275,9 @@ export function render(state, cols, rows) {
     const prompt = state.step.prompts[state.promptIndex];
     lines = [state.need.title, '', `Step ${state.step.n}: ${state.step.label ?? ''}`, '', `${prompt.label ?? prompt.key}:`, `> ${state.input}_`, '', 'enter accept   esc cancel   ctrl+u clear'];
   } else {
-    lines = [state.need.title, '', `Run step ${state.step.n} in a new tab?`, '', ...hardWrap(state.command, '  ', '    ', cols), ...hardWrap(state.step.cwd, '  in ', '     ', cols), ''];
-    if (state.need.source === 'ask') lines.push('When it exits 0 the step is marked done on the board.', '');
-    lines.push('y run   n cancel');
+    const body = [state.need.title, '', `Run step ${state.step.n} in a new tab?`, '', ...hardWrap(state.command, '  ', '    ', cols), ...hardWrap(state.step.cwd, '  in ', '     ', cols), ''];
+    if (state.need.source === 'ask') body.push(...wrap('When it exits 0 the step is marked done on the board.', width), '');
+    lines = paged(body, 'y run   n cancel', state.scroll, rows);
   }
   return lines.slice(0, rows).map((line) => [...line].slice(0, cols).join(''));
 }

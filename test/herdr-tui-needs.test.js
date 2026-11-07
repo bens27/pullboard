@@ -350,3 +350,26 @@ test('a confirm screen wraps a long command and folder in full instead of cuttin
   assert.ok(scrolled.some((line) => line.endsWith('--last-flag')));
   assert.ok(scrolled.some((line) => line.endsWith('folder-end')));
 });
+
+test('a single step confirm on a short screen scrolls to the end of a long command and folder, footer kept [B26]', () => {
+  const cwd = `/tmp/${'deep/'.repeat(12)}folder-end`;
+  const command = `pullboard relay pair ${'--flag-x '.repeat(8)}--last-flag`;
+  const need = { id: 'ask:0123abcd', kind: 'ask', source: 'ask', title: 'Long', steps: [{ n: 1, label: 'Long', command, cwd, prompts: [], done: false }], next: 1 };
+  const confirm = keys(loaded(initialState(), { root: '/r', needs: [need] }), 'enter', 'enter').state;
+  assert.equal(confirm.mode, 'confirm');
+  const seen = [];
+  for (let down = 0; down < 30; down += 1) {
+    const screen = render(keys(confirm, ...Array(down).fill('down')).state, 40, 6);
+    assert.equal(screen.length, 6);
+    assert.equal(screen[5], 'up/down scroll   y run   n cancel', `after ${down} down`);
+    seen.push(...screen.slice(0, 5));
+  }
+  const tall = render(confirm, 40, 100);
+  assert.equal(unwrap(tall, '  ', '    '), command);
+  assert.equal(unwrap(tall, '  in ', '     '), cwd);
+  for (const line of tall.slice(0, -1)) assert.ok(seen.includes(line), line);
+  const back = keys(confirm, ...Array(30).fill('down'), ...Array(30).fill('up')).state;
+  assert.deepEqual(render(back, 40, 6), render(confirm, 40, 6));
+  assert.equal(keys(confirm, 'down', 'down', 'y').effects[0].run.command, command);
+  assert.equal(render(confirm, 80, 40).at(-1), 'y run   n cancel');
+});
