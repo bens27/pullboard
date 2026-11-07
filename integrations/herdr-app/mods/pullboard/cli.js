@@ -3,6 +3,7 @@
  * runs `pullboard` with the person's own PATH and environment in the board's folder [B26].
  */
 import { parseJson } from './read-model.js';
+import { readNeeds } from './needs-model.js';
 
 /** The read-only board reads, each with --json, keyed by the name the read model takes. */
 export const READS = {
@@ -58,4 +59,20 @@ export async function runMove(exec, cwd, args) {
   const result = await pullboard(exec, cwd, args);
   const text = (result.code === 0 ? result.stdout : result.stderr || result.stdout).trim().split('\n').find(Boolean) ?? '';
   return { ok: result.code === 0, message: text.slice(0, 200) };
+}
+
+/**
+ * Read what needs the person: `pullboard needs --json` in the board's folder, or a saved copy of
+ * its output when `file` is set, so the section can be tried before the command exists.
+ *
+ * @param {Function} exec
+ * @param {(path: string) => Promise<string|null>} readTextFile
+ * @param {string} cwd
+ * @param {string|null} file
+ * @returns {Promise<ReturnType<typeof readNeeds>>}
+ */
+export async function readNeedsList(exec, readTextFile, cwd, file = null) {
+  if (!file) return readNeeds(await pullboard(exec, cwd, ['needs', '--json']));
+  const text = await readTextFile(file).catch(() => null);
+  return text == null ? { state: 'error', message: `needs: cannot read ${file}` } : readNeeds({ code: 0, stdout: text, stderr: '' });
 }

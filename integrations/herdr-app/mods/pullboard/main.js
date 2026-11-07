@@ -1,12 +1,14 @@
 /**
- * Herdr panel for a Pullboard board [B26]: why work is halted, which seats are live and what they
- * hold, test capacity with slot controls, and flagged halts that have no recorded reason.
+ * Herdr panel for a Pullboard board [B26]: what needs the person, why work is halted, which seats are
+ * live and what they hold, test capacity with slot controls, and flagged halts that have no
+ * recorded reason.
  */
 import { View, div } from 'gpui-kit';
 import { v_flex, h_flex } from 'gpui-base';
 import { theme, props, focused, exec, nextCommand } from 'herdr';
 import { boardModel, panelCommand, sectionNote, slotMove } from './read-model.js';
 import { readBoard, runMove } from './cli.js';
+import { NeedsSection } from './needs-view.js';
 
 // Each refresh starts five CLI reads; 15 s keeps the panel current without a steady load.
 const POLL_MS = 15000;
@@ -21,6 +23,7 @@ export default class Pullboard extends View {
   /** Pick the board folder and start polling. */
   init(_props, cx) {
     this.props = props() ?? {};
+    this.needs = new NeedsSection();
     this.refresh(cx);
     this.pollTask = cx.timer.every(POLL_MS, (cx) => this.refresh(cx));
     this.listen(cx);
@@ -48,8 +51,10 @@ export default class Pullboard extends View {
 
   /** Read the board again unless a read is already running. */
   refresh(cx) {
-    if (this.loading) return;
     const board = this.folder();
+    this.needs.refresh(cx, board, this.props.needsFile ?? null);
+    // The needs-only view draws nothing from the board reads, so it skips their five commands.
+    if (this.loading || this.props.view === 'needs') return;
     if (!board) { this.reads = { errors: ['No board folder: set the board prop or focus a pane in a board.'] }; cx.notify(); return; }
     this.loading = true;
     cx.spawn(async (cx) => {
@@ -133,7 +138,9 @@ export default class Pullboard extends View {
     const root = v_flex().id('pullboard').size_full().gap(12).p(14).bg(t.chrome).text_color(t.foreground).text_size(13).overflow_y_scrollbar()
       .child(h_flex().justify_between().child(div().font_semibold().child('Pullboard'))
         .child(div().id('refresh').on_click((_e, cx) => this.refresh(cx)).text_color(t.accent).child(this.loading ? 'Reading…' : 'Refresh')))
-      .child(div().text_size(11).text_color(t.muted).child(this.board ?? this.folder() ?? 'No board folder'));
+      .child(div().text_size(11).text_color(t.muted).child(this.board ?? this.folder() ?? 'No board folder'))
+      .child(this.needs.render());
+    if (this.props.view === 'needs') return root;
     for (const error of model.errors) root.child(div().text_size(12).text_color(t.blocked).child(error));
     if (!this.reads) return root.child(div().text_color(t.muted).child('Reading the board…'));
     const note = (section) => {

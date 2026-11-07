@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "root": "/tmp/pullboard-needs-fixture",
+  "needs": [
+    {
+      "id": "signoff:G9",
+      "kind": "signoff",
+      "source": "board",
+      "title": "Sign off G9",
+      "why": "G9 has passing proof and waits for your signature.",
+      "from": null,
+      "created": null,
+      "steps": [
+        {
+          "n": 1,
+          "label": "Sign G9",
+          "command": "pullboard spec signoff G9 --note {note}",
+          "cwd": "/tmp/pullboard-needs-fixture",
+          "prompts": [{ "key": "note", "label": "What you checked", "default": "" }],
+          "personOnly": true,
+          "done": false
+        }
+      ],
+      "next": 1
+    },
+    {
+      "id": "ask:3",
+      "kind": "ask",
+      "source": "ask",
+      "title": "Link the relay for the phone",
+      "why": "The phone needs this board; only you can sign in to GitHub.",
+      "from": "relay-1",
+      "created": "2026-11-07T10:00:00.000Z",
+      "steps": [
+        {
+          "n": 1,
+          "label": "Check the relay",
+          "command": "pullboard relay status",
+          "cwd": "/tmp/pullboard-needs-fixture",
+          "prompts": [],
+          "personOnly": false,
+          "done": true
+        },
+        {
+          "n": 2,
+          "label": "Link every board",
+          "command": "pullboard relay on --all --name {device}",
+          "cwd": "/tmp/pullboard-needs-fixture",
+          "prompts": [{ "key": "device", "label": "Name for this device", "default": "Ben's Mac" }],
+          "personOnly": true,
+          "done": false
+        },
+        {
+          "n": 3,
+          "label": "Confirm the phone",
+          "command": "pullboard relay devices",
+          "cwd": "/tmp/pullboard-needs-fixture",
+          "prompts": [],
+          "personOnly": false,
+          "done": false
+        }
+      ],
+      "next": 2
+    }
+  ]
+}
