@@ -206,3 +206,4 @@ export function slotMove(name, delta, { gateSlots, browserSlots, runners }) {
   if (next === 0 && !runners) return { refused: `${name} 0 needs a registered runner` };
   return { args: ['settings', name, String(next)] };
 }
+export function sectionNote() { return undefined; }

@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { boardModel, parseJson, slotMove } from '../integrations/herdr-app/mods/pullboard/read-model.js';
+import { boardModel, parseJson, sectionNote, slotMove } from '../integrations/herdr-app/mods/pullboard/read-model.js';
 
 const NOW = Date.parse('2026-11-06T12:00:00.000Z');
 const ago = (minutes) => new Date(NOW - minutes * 60_000).toISOString();
@@ -162,4 +162,37 @@ test('unreadable command output becomes an explicit error, never an empty board 
   const model = boardModel({ ...board(), list: null, errors: ['list: unreadable output'] });
   assert.deepEqual(model.errors, ['list: unreadable output']);
   assert.deepEqual(model.flags, []);
+});
+
+test('with unknown current slot counts no slot move is issued and the controls are off [B26]', () => {
+  for (const state of [{ gateSlots: null, browserSlots: 1, runners: 0 }, { gateSlots: 3, browserSlots: null, runners: 0 }, { gateSlots: undefined, browserSlots: undefined, runners: 1 }]) {
+    assert.match(slotMove('gateSlots', 1, state).refused, /unknown/);
+    assert.match(slotMove('browserSlots', 1, state).refused, /unknown/);
+  }
+  const model = boardModel({ ...board(), settings: null, errors: ['settings: exit 1: refused'] });
+  assert.equal(model.capacity.controls, false);
+  assert.equal(boardModel(board()).capacity.controls, true);
+});
+
+test('a slot pool with no resource rows takes its capacity from settings [B26]', () => {
+  const resources = { resources: [], runners: [], browserSlots: 2, shortSlots: 0 };
+  const { capacity } = boardModel({ ...board(), resources, settings: { settings: { gateSlots: 4, browserSlots: 2, gate: {} } } });
+  assert.deepEqual([capacity.gate.capacity, capacity.gate.used, capacity.gate.free], [4, 0, 4]);
+  assert.deepEqual([capacity.browser.capacity, capacity.browser.used, capacity.browser.free], [2, 0, 2]);
+});
+
+test('a section whose read failed shows as unknown, never as calm [B26]', () => {
+  const failed = boardModel({ ...board(), health: null, resources: null, errors: ['health: exit 1: x', 'resources: exit 1: y'] });
+  assert.match(sectionNote(failed, 'flags'), /^Unknown.*health/);
+  assert.match(sectionNote(failed, 'halts'), /^Unknown.*health/);
+  assert.match(sectionNote(failed, 'capacity'), /^Unknown.*resources/);
+  assert.equal(sectionNote(failed, 'seats'), null);
+  const noSeats = boardModel({ ...board(), status: null, list: null });
+  assert.match(sectionNote(noSeats, 'seats'), /^Unknown.*status.*list/);
+  assert.match(sectionNote(noSeats, 'flags'), /^Unknown.*status.*list/);
+  const calm = boardModel(board());
+  assert.equal(sectionNote(calm, 'flags'), 'Every halt has a recorded reason.');
+  assert.equal(sectionNote(calm, 'halts'), 'Nothing is stuck.');
+  assert.equal(sectionNote(calm, 'capacity'), null);
+  assert.equal(sectionNote(boardModel(board({ agents: [] })), 'seats'), 'No seats.');
 });
