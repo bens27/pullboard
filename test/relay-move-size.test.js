@@ -163,6 +163,14 @@ test('a mirror record whose presentation is over the relay body limit is sent wi
   await assertMirrorMigrates(box, title);
 });
 
+test('an older mirror link with several unsent records migrates on a paged relay, its presentation left to the checkpoint [B26,H16]', async (t) => {
+  const box = await relayClientFixture(t);
+  await box.link();
+  legacyMirrorLink(box);
+  addUnmirroredItems(box, 3, 'Mirrored short title');
+  await assertMirrorMigrates(box, 'Mirrored short title');
+});
+
 test('an oversized mirror record an older client left pending is resealed under the limit, never retried forever [B26,H16]', async (t) => {
   const box = await relayClientFixture(t);
   await box.link();

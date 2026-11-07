@@ -22,6 +22,17 @@ import { withOutboxGuard } from './relay-outbox-guard.js';
 import { Refused } from './refused.js';
 
 /**
+ * Whether this link publishes checkpoints: only a machine credential uploads one.
+ * Why shared: a mirror on a paged relay leaves its presentation to that checkpoint, so both must agree on who sends one.
+ *
+ * @param {any} state - The relay link.
+ * @returns {boolean}
+ */
+export function publishesCheckpoint(state) {
+  return Boolean(state.token?.startsWith('pm_')) && !process.env.PULLBOARD_RELAY_TOKEN;
+}
+
+/**
  * Build the checkpoint publisher over relay.js's own link and transport helpers, which it cannot import without a cycle.
  *
  * @param {{ request: Function, saveLink: Function, loadLink: Function, linkFile: Function, readBoardKey: Function,
@@ -63,7 +74,7 @@ export function checkpointPublisher({ request, saveLink, loadLink, linkFile, rea
    * credential, an upload pause not yet over, or a definitive rejection of this same image).
    */
   async function stageCheckpoint(root, file, state, io, prepared, { probe = true } = {}) {
-    if (!state.token?.startsWith('pm_') || process.env.PULLBOARD_RELAY_TOKEN) return null;
+    if (!publishesCheckpoint(state)) return null;
     const resumed = Boolean(state.checkpointRefusal);
     if (state.checkpointRefusal && uploadPauseType(state.checkpointRefusal)) {
       // The background publisher probes before taking the lock; a pause that appeared since waits for its next pass.
@@ -132,7 +143,7 @@ export function checkpointPublisher({ request, saveLink, loadLink, linkFile, rea
     const linked = loadLink(file);
     if (!linked || linked.unlinking) return false;
     // Without a machine credential nothing is uploaded, so the board is not read (stageCheckpoint decides the same).
-    if (!linked.token?.startsWith('pm_') || process.env.PULLBOARD_RELAY_TOKEN) return false;
+    if (!publishesCheckpoint(linked)) return false;
     // A pending recovery or an unacknowledged send is settled by a command's own sync first, never published around.
     if (linked.recovery || linked.pending) return false;
     const paused = Boolean(linked.checkpointRefusal && uploadPauseType(linked.checkpointRefusal));
