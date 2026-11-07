@@ -4,7 +4,7 @@
  * plugins.json and binds its open action in config.toml [B26]. Every file it will change or replace
  * is copied to a timestamped backup folder first, and the new config.toml must pass
  * `herdr config check` before anything is written.
- * Usage: install.sh [--root <board dir>] [--key <binding>] [--dry-run]
+ * Usage: install.sh [--root <board dir>]... [--key <binding>] [--dry-run]
  */
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -184,12 +184,13 @@ function herdr(args, env) {
 }
 
 function parseArgs(argv) {
-  const options = { key: DEFAULT_KEY, root: '', dryRun: false };
+  const options = { key: DEFAULT_KEY, roots: [], dryRun: false };
   for (let at = 0; at < argv.length; at += 1) {
     const arg = argv[at];
     if (arg === '--dry-run') options.dryRun = true;
-    else if ((arg === '--key' || arg === '--root') && argv[at + 1]) { options[arg.slice(2)] = argv[at + 1]; at += 1; }
-    else throw new Error('usage: install.sh [--root <board dir>] [--key <binding>] [--dry-run]');
+    else if (arg === '--key' && argv[at + 1]) { options.key = argv[at + 1]; at += 1; }
+    else if (arg === '--root' && argv[at + 1]) { options.roots.push(argv[at + 1]); at += 1; }
+    else throw new Error('usage: install.sh [--root <board dir>]... [--key <binding>] [--dry-run]');
   }
   return options;
 }
@@ -223,8 +224,9 @@ export function install(argv, env) {
   const config = env.HERDR_CONFIG_DIR || join(env.HOME || homedir(), '.config', 'herdr');
   // A missing folder means Herdr never ran here or HOME is wrong; creating it would hide that.
   if (!existsSync(config) || !statSync(config).isDirectory()) throw new Error(`no Herdr config folder at ${config}; set HERDR_CONFIG_DIR`);
-  const root = resolve(options.root || boardRoot(process.cwd()));
-  if (!existsSync(root)) throw new Error(`no board folder at ${root}`);
+  const named = options.roots.length ? options.roots : [boardRoot(process.cwd())];
+  const roots = [...new Set(named.map((root) => resolve(root)))];
+  for (const root of roots) if (!existsSync(root)) throw new Error(`no board folder at ${root}`);
   const source = import.meta.dirname;
   const dest = join(config, 'plugins', 'local', PLUGIN_ID);
   const pluginsPath = join(config, 'plugins.json');
@@ -234,7 +236,7 @@ export function install(argv, env) {
   try { defaults = herdr(['--default-config'], env); }
   catch { defaults = ''; } // Without herdr only the config's own bindings are checked for a clash.
   const toml = planKeys(existsSync(tomlPath) ? readFileSync(tomlPath, 'utf8') : '', options.key, defaults);
-  const lines = [`board ${root}`, `plugin ${dest}`, `key ${options.key} -> ${PLUGIN_ID}.open`];
+  const lines = [...roots.map((root) => `board ${root}`), `plugin ${dest}`, `key ${options.key} -> ${PLUGIN_ID}.open`];
   if (options.dryRun) return [...lines, 'dry run: nothing written'];
 
   const candidate = scratch(tomlPath);
@@ -259,7 +261,7 @@ export function install(argv, env) {
   mkdirSync(dirname(dest), { recursive: true });
   const staging = mkdtempSync(`${dest}.pullboard-needs-`);
   for (const file of FILES) cpSync(join(source, file), join(staging, file));
-  writeFileSync(join(staging, 'config.json'), JSON.stringify({ root }, null, 2) + '\n');
+  writeFileSync(join(staging, 'config.json'), JSON.stringify({ roots }, null, 2) + '\n');
   rmSync(dest, { recursive: true, force: true });
   renameSync(staging, dest);
   write(pluginsPath, plugins + '\n');

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * The "Needs you" popup Herdr opens for the pullboard.needs plugin [B26]. It reads the board with
- * `pullboard needs --json` in the board root, and starts the step, or the batch of selected steps,
- * the person confirms in a new tab of their current workspace. It never writes the board itself: an ask's step is recorded by the
- * tab's script, after the command exits 0, so agents pick it up at their next check.
+ * The "Needs you" popup Herdr opens for the pullboard.needs plugin [B26]. It reads each configured
+ * board with `pullboard needs --json` in that board's root, and starts the step, or the batch of
+ * selected steps, the person confirms in a new tab of their current workspace. It never writes the
+ * board itself: an ask's step is recorded by the tab's script, after the command exits 0, from that
+ * ask's own board, so agents pick it up at their next check.
  */
 import { execFile } from 'node:child_process';
 import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -12,8 +13,10 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import {
   batchScript,
+  configRoots,
   needsMissing,
   parseNeeds,
+  readBoards,
   rootPane,
   shellQuote,
   stepScript,
@@ -24,14 +27,15 @@ import { initialState, loaded, press, render } from './view.js';
 const run = promisify(execFile);
 const HERDR = process.env.HERDR_BIN_PATH || 'herdr';
 
-function configuredRoot() {
-  if (process.env.PULLBOARD_NEEDS_ROOT) return process.env.PULLBOARD_NEEDS_ROOT;
+function configuredRoots() {
+  if (process.env.PULLBOARD_NEEDS_ROOT) return [process.env.PULLBOARD_NEEDS_ROOT];
   const file = join(import.meta.dirname, 'config.json');
+  let roots = [];
   if (existsSync(file)) {
-    try { return JSON.parse(readFileSync(file, 'utf8')).root || process.cwd(); }
-    catch { return process.cwd(); } // A damaged config falls back to the popup's folder rather than no panel.
+    try { roots = configRoots(JSON.parse(readFileSync(file, 'utf8'))); }
+    catch { roots = []; } // A damaged config falls back to the popup's folder rather than no panel.
   }
-  return process.cwd();
+  return roots.length ? roots : [process.cwd()];
 }
 
 async function readBoard(root) {
@@ -84,7 +88,7 @@ function keys(chunk) {
 }
 
 async function main() {
-  const root = configuredRoot();
+  const roots = configuredRoots();
   let state = initialState();
   const draw = () => {
     const cols = process.stdout.columns || 80;
@@ -96,7 +100,7 @@ async function main() {
     process.stdout.write('\x1b[?25h\x1b[?1049l');
     process.exit(code);
   };
-  const refresh = async () => { state = loaded(state, await readBoard(root)); draw(); };
+  const refresh = async () => { state = loaded(state, await readBoards(roots, readBoard)); draw(); };
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
   process.stdout.write('\x1b[?1049h\x1b[?25l');
   process.stdout.on('resize', draw);

@@ -13,23 +13,34 @@ import {
 
 /** @returns {any} */
 export function initialState() {
-  return { mode: 'loading', needs: [], root: '', cursor: 0, need: null, step: null, promptIndex: 0, values: {}, input: '', command: '', note: '', selected: [], batch: null, scroll: 0 };
+  return { mode: 'loading', needs: [], boards: [], root: '', cursor: 0, need: null, step: null, promptIndex: 0, values: {}, input: '', command: '', note: '', selected: [], batch: null, scroll: 0 };
+}
+
+// Each need carries its board's root, where its asks are marked done, and a key naming board and
+// id together, since two boards can list the same id and selecting one must not select both.
+function tagged(root, needs) {
+  return needs.map((need) => ({ ...need, root, key: `${root}\n${need.id}` }));
 }
 
 /**
- * The state after the board was read, keeping the cursor on the same need when it is still there.
+ * The state after the boards were read, keeping the cursor on the same need when it is still there.
+ * Takes every board at once, or the one board or note an older reader returns.
  *
  * @param {any} state
- * @param {{ needs: any[], root: string } | { note: string }} read
+ * @param {{ boards: any[] } | { needs: any[], root: string } | { note: string }} read
  * @returns {any}
  */
 export function loaded(state, read) {
-  if ('note' in read) return { ...state, mode: 'note', needs: [], note: read.note };
-  const id = state.needs[state.cursor]?.id;
-  const kept = read.needs.findIndex((need) => need.id === id);
+  if ('note' in read) return { ...state, mode: 'note', needs: [], boards: [], note: read.note };
+  const boards = read.boards ?? [];
+  if (boards.length === 1 && 'note' in boards[0]) return { ...state, mode: 'note', needs: [], boards: [], note: boards[0].note };
+  const needs = read.boards ? boards.flatMap((board) => tagged(board.root, board.needs ?? [])) : tagged(read.root, read.needs);
+  const key = state.needs[state.cursor]?.key;
+  const kept = needs.findIndex((need) => need.key === key);
   // A need that left the board or can no longer run safely drops out of the selection.
-  const selected = state.selected.filter((sel) => read.needs.some((need) => need.id === sel && !batchRefusal(need)));
-  return { ...state, mode: 'list', needs: read.needs, root: read.root, cursor: Math.max(0, kept), need: null, step: null, selected, batch: null };
+  const selected = state.selected.filter((sel) => needs.some((need) => need.key === sel && !batchRefusal(need)));
+  const root = read.root ?? boards[0]?.root ?? '';
+  return { ...state, mode: 'list', needs, boards, root, cursor: Math.max(0, kept), need: null, step: null, selected, batch: null };
 }
 
 function beginStep(state) {
@@ -79,8 +90,8 @@ function editKey(state, key) {
 function toggle(state) {
   const need = state.needs[state.cursor];
   if (batchRefusal(need)) return { state };
-  const on = state.selected.includes(need.id);
-  return { state: { ...state, selected: on ? state.selected.filter((id) => id !== need.id) : [...state.selected, need.id] } };
+  const on = state.selected.includes(need.key);
+  return { state: { ...state, selected: on ? state.selected.filter((key) => key !== need.key) : [...state.selected, need.key] } };
 }
 
 function startBatch(state) {
@@ -152,7 +163,8 @@ export function press(state, key) {
   if (state.mode === 'batch') return batchKey(state, key);
   if (state.mode === 'confirm') {
     if (key === 'y' || key === 'enter') {
-      return { state: { ...state, mode: 'need' }, effect: { run: { need: state.need, step: state.step, command: state.command, root: state.root } } };
+      const root = state.need.root ?? state.root;
+      return { state: { ...state, mode: 'need' }, effect: { run: { need: state.need, step: state.step, command: state.command, root } } };
     }
     if (key === 'n' || key === 'escape') return { state: { ...state, mode: 'need', step: null } };
     return scrollKey(state, key);
@@ -327,15 +339,28 @@ export function render(state, cols, rows) {
   let lines;
   if (state.mode === 'loading') lines = ['Needs you', '', 'Reading the board...'];
   else if (state.mode === 'note') lines = ['Needs you', '', ...wrap(state.note, width), '', 'r refresh   q close'];
-  else if (state.mode === 'list' && !state.needs.length) lines = ['Needs you', '', 'Nothing needs you.', '', 'r refresh   q close'];
+  else if (state.mode === 'list' && !state.needs.length && !state.boards.some((board) => 'note' in board)) lines = ['Needs you', '', 'Nothing needs you.', '', 'r refresh   q close'];
   else if (state.mode === 'list') {
     lines = ['Needs you', ''];
-    state.needs.forEach((need, index) => {
+    const row = (need) => {
+      const index = state.needs.indexOf(need);
       const done = need.steps.filter((step) => step.done).length;
-      const pick = batchRefusal(need) ? '[-]' : state.selected.includes(need.id) ? '[x]' : '[ ]';
-      lines.push(`${index === state.cursor ? '>' : ' '} ${pick} ${need.title}  [${need.kind ?? need.source}] ${done}/${need.steps.length}`);
-    });
-    const why = batchRefusal(state.needs[state.cursor]);
+      const pick = batchRefusal(need) ? '[-]' : state.selected.includes(need.key) ? '[x]' : '[ ]';
+      return `${index === state.cursor ? '>' : ' '} ${pick} ${need.title}  [${need.kind ?? need.source}] ${done}/${need.steps.length}`;
+    };
+    // One board reads as before; several each get a heading, with a failed board's note under its own.
+    if (state.boards.length > 1) {
+      state.boards.forEach((board, at) => {
+        if (at) lines.push('');
+        lines.push(board.name);
+        if ('note' in board) lines.push(...wrap(board.note, width - 2).map((line) => `  ${line}`));
+        else {
+          const mine = state.needs.filter((need) => need.root === board.root);
+          lines.push(...(mine.length ? mine.map(row) : ['  Nothing needs you here.']));
+        }
+      });
+    } else lines.push(...state.needs.map(row));
+    const why = state.needs.length ? batchRefusal(state.needs[state.cursor]) : '';
     if (why) lines.push('', ...wrap(`Cannot select: ${why}`, width));
     const count = state.selected.length;
     lines.push('', count ? `up/down choose   space select   r/enter run selected (${count})   q close` : 'up/down choose   space select   enter open   r refresh   q close');

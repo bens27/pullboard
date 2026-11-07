@@ -14,10 +14,12 @@ import {
   batchRefusal,
   batchScript,
   batchSteps,
+  configRoots,
   fillCommand,
   needsMissing,
   nextStep,
   parseNeeds,
+  readBoards,
   rootPane,
   shellQuote,
   stepScript,
@@ -212,7 +214,7 @@ test('a batch takes the selected needs in list order, with every remaining step 
 
   const start = loaded(initialState(), board);
   const chosen = keys(start, ' ', 'down', ' ');
-  assert.deepEqual(chosen.state.selected, ['signoff:G9', 'ask:3f9a0c12']);
+  assert.deepEqual(chosen.state.selected, [`${board.root}\nsignoff:G9`, `${board.root}\nask:3f9a0c12`]);
   assert.ok(render(chosen.state, 80, 40).some((line) => line.startsWith('> [x] Link the board to the relay')));
   const asked = keys(chosen.state, 'r', ...'ok', 'enter');
   assert.equal(asked.state.mode, 'prompt');
@@ -577,4 +579,76 @@ test('fuzzed commands and folders are shown whole, within the width, at every sc
       throw error;
     }
   }
+});
+
+test('the panel reads every configured board, the old single root still works [B26]', async () => {
+  assert.deepEqual(configRoots({ root: '/a' }), ['/a'], 'an install from before several boards keeps its board');
+  assert.deepEqual(configRoots({ roots: ['/a', '/b', '/a'] }), ['/a', '/b']);
+  assert.deepEqual(configRoots({ roots: [], root: '/a' }), ['/a']);
+  assert.deepEqual(configRoots({}), []);
+  assert.deepEqual(configRoots(null), []);
+  const read = await readBoards(['/x/superagent', '/x/session-handoff-kit', '/x/broken'], async (root) => {
+    if (root.endsWith('broken')) return { note: `Could not read what needs you in ${root}: boom` };
+    return { root, needs: [{ id: 'draft:G1', title: `Approve G1 in ${root}`, steps: [], next: null }] };
+  });
+  assert.deepEqual(read.boards.map((board) => [board.name, board.root, board.note ?? board.needs.length]), [
+    ['superagent', '/x/superagent', 1],
+    ['session-handoff-kit', '/x/session-handoff-kit', 1],
+    ['broken', '/x/broken', 'Could not read what needs you in /x/broken: boom'],
+  ], 'a board that fails keeps its place and its note, and hides no other board');
+});
+
+test('needs from several boards list under a heading each, and every run and batch keeps its board [B26]', (t) => {
+  const step = (cwd, command) => ({ n: 1, label: 'Go', command, cwd, prompts: [], personOnly: true, done: false });
+  const ask = (root) => ({ id: 'ask:3f9a0c12', kind: 'ask', source: 'ask', title: `Ask in ${root}`, steps: [step(root, 'true')], next: 1 });
+  const draft = (root) => ({ id: 'draft:G1', kind: 'draft', source: 'board', title: 'Approve G1: same id on both boards', steps: [step(root, 'pullboard spec approve G1')], next: 1 });
+  const start = loaded(initialState(), { boards: [
+    { root: '/x/superagent', name: 'superagent', needs: [draft('/x/superagent')] },
+    { root: '/x/broken', name: 'broken', note: 'Could not read what needs you in /x/broken: boom' },
+    { root: '/x/session-handoff-kit', name: 'session-handoff-kit', needs: [draft('/x/session-handoff-kit'), ask('/x/session-handoff-kit')] },
+  ] });
+  assert.equal(start.mode, 'list');
+  const screen = render(start, 100, 40);
+  const at = (text) => screen.findIndex((line) => line.includes(text));
+  assert.ok(at('superagent') >= 0 && at('broken') > at('superagent') && at('session-handoff-kit') > at('broken'), screen.join('\n'));
+  assert.ok(at('boom') > at('broken') && at('boom') < at('session-handoff-kit'), 'a failed board shows its note under its heading');
+  assert.equal(screen.filter((line) => line.includes('Approve G1')).length, 2, 'the same id on two boards is two needs');
+
+  const single = keys(start, 'down', 'enter', 'enter', 'y');
+  assert.equal(single.effects[0].run.root, '/x/session-handoff-kit', 'a run carries its own board');
+
+  const chosen = keys(start, ' ', 'down', ' ', 'down', ' ');
+  assert.equal(chosen.state.selected.length, 3, 'the same id on two boards is selected separately');
+  const ran = keys(chosen.state, 'r', 'y');
+  assert.deepEqual(ran.effects[0].batch.items.map(({ need, command }) => [need.root, command]), [
+    ['/x/superagent', 'pullboard spec approve G1'],
+    ['/x/session-handoff-kit', 'pullboard spec approve G1'],
+    ['/x/session-handoff-kit', 'true'],
+  ], 'one batch mixes boards, each step keeping its own');
+
+  const dir = mkdtempSync(join(tmpdir(), 'needs-boards-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const [one, two] = [join(dir, 'one'), join(dir, 'two')];
+  const bin = join(dir, 'bin');
+  const self = join(dir, 'self');
+  for (const folder of [one, two, bin, self]) mkdirSync(folder);
+  writeFileSync(join(bin, 'pullboard'), `#!/bin/sh\necho "$PWD|$*" >> ${shellQuote(join(dir, 'log'))}\n`);
+  chmodSync(join(bin, 'pullboard'), 0o755);
+  const items = [one, two].map((root) => ({ need: { ...ask(root), root }, step: step(root, 'true'), command: 'true' }));
+  writeFileSync(join(self, 'batch.zsh'), batchScript({ items, root: one, self }));
+  const result = spawnSync('/bin/zsh', ['-f', join(self, 'batch.zsh')], { env: { PATH: `${bin}:/usr/bin:/bin` }, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readFileSync(join(dir, 'log'), 'utf8'), `${one}|ask done 3f9a0c12 --step 1 --as person\n${two}|ask done 3f9a0c12 --step 1 --as person\n`,
+    'each ask is marked done on its own board');
+});
+
+test('several boards with no need to run still show each note and draw without a cursor [B26]', () => {
+  const state = loaded(initialState(), { boards: [
+    { root: '/x/broken', name: 'broken', note: 'Could not read what needs you in /x/broken: boom' },
+    { root: '/x/quiet', name: 'quiet', needs: [] },
+  ] });
+  const screen = render(state, 80, 20);
+  assert.ok(screen.some((line) => line.includes('boom')), screen.join('\n'));
+  assert.ok(screen.some((line) => line.includes('Nothing needs you here.')), screen.join('\n'));
+  assert.deepEqual(keys(state, 'down', ' ', 'enter').effects, [], 'no key acts on a need that is not there');
 });

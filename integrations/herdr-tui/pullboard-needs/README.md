@@ -1,7 +1,7 @@
 # Pullboard: needs you (Herdr TUI plugin)
 
-A Herdr popup listing what needs you on one Pullboard board. It reads `pullboard needs --json`
-in the board's folder, and runs each step of a need in order, or a batch of selected needs, in a
+A Herdr popup listing what needs you on one or more Pullboard boards. It reads `pullboard needs
+--json` in each board's folder, and runs each step of a need in order, or a batch of selected needs, in a
 new tab of the workspace you were in. It never writes the board itself: an ask's step is marked done by the tab's script
 with `pullboard ask done <id> --step <n> --as person` after its command exits 0, so agents pick
 it up at their next check and are never interrupted. A step with a prompt must use it as a bare
@@ -12,10 +12,19 @@ must be one line; anything else is refused with the reason and never runs.
 
 From the board's main checkout:
 
-    sh integrations/herdr-tui/pullboard-needs/install.sh [--root <board dir>] [--key <binding>] [--dry-run]
+    sh integrations/herdr-tui/pullboard-needs/install.sh [--root <board dir>]... [--key <binding>] [--dry-run]
+
+Give `--root` once per board to list several, for example:
+
+    sh integrations/herdr-tui/pullboard-needs/install.sh --root ~/work/web --root ~/work/api
+
+With several boards, the needs are listed under a heading per board (its folder name). A board
+that cannot be read shows why under its own heading and hides no other board. Each run and each
+batch keeps every need's own board, and a batch may mix boards. Without `--root` the board is the
+git checkout you ran it from. An install from before several boards keeps working.
 
 It copies the plugin to `<config>/plugins/local/pullboard.needs`, where `<config>` is
-`$HERDR_CONFIG_DIR` or `~/.config/herdr`, writes the board folder to its `config.json`, adds it to
+`$HERDR_CONFIG_DIR` or `~/.config/herdr`, writes the board folders to its `config.json`, adds it to
 `plugins.json`, and binds its open action in `config.toml` inside a managed block it replaces on
 the next run. Before writing, it backs every file it changes up to
 `<config>/backups/pullboard-needs-<time>` and prints that path, and the new `config.toml` must
@@ -46,7 +55,7 @@ run. With nothing selected, `enter` opens a need and `r` refreshes as before.
 
 ## Environment
 
-- `PULLBOARD_NEEDS_ROOT`: the board folder to read, overriding the one `config.json` names.
+- `PULLBOARD_NEEDS_ROOT`: one board folder to read, overriding the ones `config.json` names.
 - `PULLBOARD_NEEDS_FIXTURE`: a JSON file to show instead of running `pullboard needs --json`,
   for trying the popup out; `fixture.json` here is one.
 - `HERDR_BIN_PATH`: the `herdr` binary to call, if it is not on PATH.

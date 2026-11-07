@@ -70,7 +70,7 @@ test('a fresh install copies the plugin, registers it and binds prefix+y [B26]',
   assert.equal(result.status, 0, result.err);
   assert.deepEqual(readdirSync(installed).sort(), [...SHIPPED, 'config.json'].sort());
   for (const file of SHIPPED) assert.equal(readFileSync(join(installed, file), 'utf8'), readFileSync(join(SOURCE, file), 'utf8'), file);
-  assert.deepEqual(JSON.parse(readFileSync(join(installed, 'config.json'), 'utf8')), { root: board });
+  assert.deepEqual(JSON.parse(readFileSync(join(installed, 'config.json'), 'utf8')), { roots: [board] });
 
   const plugins = JSON.parse(readFileSync(join(cfg, 'plugins.json'), 'utf8'));
   assert.deepEqual(plugins[0], OTHER);
@@ -269,4 +269,14 @@ test('a config with a multiline TOML string is refused, since its keys cannot be
     assert.deepEqual(snapshot(cfg), before);
     assert.equal(existsSync(installed), false);
   }
+});
+
+test('--root more than once lists every board in config.json, once each [B26]', (t) => {
+  const { root, board, installed, run } = home(t);
+  const other = join(root, 'other');
+  mkdirSync(other);
+  const result = run('--root', other, '--root', board);
+  assert.equal(result.status, 0, result.err);
+  assert.deepEqual(JSON.parse(readFileSync(join(installed, 'config.json'), 'utf8')), { roots: [board, other] });
+  assert.match(result.out, new RegExp(`^board ${board}\\nboard ${other}$`, 'm'), 'each board is printed on its own line');
 });

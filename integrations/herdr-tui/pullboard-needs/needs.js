@@ -80,6 +80,38 @@ export function parseNeeds(text) {
 }
 
 /**
+ * The board folders an installed config.json names: `roots`, or the single `root` an install from
+ * before several boards wrote, so an existing install keeps its board. A folder named twice is read once.
+ *
+ * @param {any} config
+ * @returns {string[]}
+ */
+export function configRoots(config) {
+  const roots = Array.isArray(config?.roots) ? config.roots.filter((root) => typeof root === 'string' && root) : [];
+  if (!roots.length && typeof config?.root === 'string' && config.root) roots.push(config.root);
+  return [...new Set(roots)];
+}
+
+/**
+ * Read every board with the given reader, in the configured order. Each board is named by its
+ * folder, and one that fails keeps its place with its note, so it never hides the boards that read.
+ *
+ * @param {string[]} roots
+ * @param {(root: string) => Promise<{ needs: any[], root: string } | { note: string }>} reader
+ * @returns {Promise<{ boards: ({ root: string, name: string, needs: any[] } | { root: string, name: string, note: string })[] }>}
+ */
+export async function readBoards(roots, reader) {
+  const boards = await Promise.all(roots.map(async (root) => {
+    const name = root.split('/').filter(Boolean).pop() ?? root;
+    let read;
+    try { read = await reader(root); }
+    catch (error) { read = { note: `Could not read what needs you in ${root}: ${String(error?.message ?? error).split('\n')[0]}` }; }
+    return 'note' in read ? { root, name, note: read.note } : { root, name, needs: read.needs };
+  }));
+  return { boards };
+}
+
+/**
  * Where a step stands: done, the one step the person may run now, or waiting on an earlier step.
  *
  * @param {{ next: number | null }} need
@@ -117,7 +149,7 @@ export function askId(need) {
 /**
  * The zsh script a new tab runs for one step. It removes itself first, so a filled answer never
  * outlives the run on disk; it prints the exit code; and for an ask it records the step done only
- * when the command exited 0, from the board root so the right board hears it, and as the person,
+ * when the command exited 0, from the need's own board root so the right board hears it, and as the person,
  * since a person-only ask refuses anyone else and this tab is the person's own terminal.
  *
  * @param {{ need: any, step: any, command: string, root: string, self: string }} input
@@ -136,7 +168,7 @@ export function stepScript({ need, step, command, root, self }) {
   ];
   if (need.source === 'ask') {
     const done = `pullboard ask done ${shellQuote(askId(need))} --step ${step.n} --as person`;
-    lines.push(`if [ $rc -eq 0 ]; then (cd -- ${shellQuote(root)} && ${done}) || echo '[could not record the step done; run: ${done.replaceAll("'", '')}]'; fi`);
+    lines.push(`if [ $rc -eq 0 ]; then (cd -- ${shellQuote(need.root ?? root)} && ${done}) || echo '[could not record the step done; run: ${done.replaceAll("'", '')}]'; fi`);
   }
   lines.push('exit $rc');
   return lines.join('\n') + '\n';
@@ -177,7 +209,8 @@ export function batchRefusal(need) {
 
 /**
  * The steps of a batch in list order, whatever order the person selected them in; a need that
- * cannot join a batch adds nothing.
+ * cannot join a batch adds nothing. A need is matched by its key when the panel gave it one, since
+ * two boards can list the same id.
  *
  * @param {any[]} needs
  * @param {string[]} selected
@@ -186,7 +219,7 @@ export function batchRefusal(need) {
 export function batchSteps(needs, selected) {
   const chosen = new Set(selected);
   return needs
-    .filter((need) => chosen.has(need.id) && !batchRefusal(need))
+    .filter((need) => chosen.has(need.key ?? need.id) && !batchRefusal(need))
     .flatMap((need) => remainingSteps(need).map((step) => ({ need, step })));
 }
 
@@ -225,7 +258,7 @@ ${command}
     );
     if (need.source === 'ask') {
       const done = `pullboard ask done ${shellQuote(askId(need))} --step ${shellQuote(String(step.n))} --as person`;
-      lines.push(`(cd -- ${shellQuote(root)} && ${done}) || echo '[could not record the step done; run: ${done.replaceAll("'", '')}]'`);
+      lines.push(`(cd -- ${shellQuote(need.root ?? root)} && ${done}) || echo '[could not record the step done; run: ${done.replaceAll("'", '')}]'`);
     }
     lines.push(
       'else',
