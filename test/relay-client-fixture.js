@@ -409,6 +409,7 @@ globalThis.fetch = function tracedFetch(input, init) {
     const call = { method: req.method, path: req.url, accept: req.headers.accept ?? '', engine: req.headers['x-pullboard-engine'],
       browser: String(req.headers.cookie ?? '').includes('pb_session=') };
     res.once('finish', () => {
+      call.status = res.statusCode;
       call.requestBytes = Buffer.concat(requestChunks).length; // What the client sent, for size bounds (#1014).
       recordResponse({ method: req.method, path: req.url, request: Buffer.concat(requestChunks), response: Buffer.concat(responseChunks) });
     });
