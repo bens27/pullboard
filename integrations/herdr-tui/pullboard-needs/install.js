@@ -67,8 +67,37 @@ export function planPlugins(current, entry) {
 }
 
 const normalize = (key) => key.toLowerCase().replaceAll(' ', '');
-// A TOML value as a basic "..." or a literal '...' string; either can bind a key.
-const VALUE = String.raw`\s*=\s*(?:"([^"]*)"|'([^']*)')`;
+// A TOML basic "..." string (with its escapes) or a literal '...' string; either can bind a key.
+const STRING = String.raw`"((?:[^"\\\n]|\\.)*)"|'([^'\n]*)'`;
+const VALUE = String.raw`\s*=\s*(?:${STRING})`;
+// Stands in for a basic string whose escape cannot be decoded, so it clashes with every key.
+const UNDECODABLE = Symbol('undecodable');
+const ESCAPES = { b: '\b', t: '\t', n: '\n', f: '\f', r: '\r', '"': '"', '\\': '\\' };
+
+/**
+ * A matched TOML string's value: a basic string with its escapes decoded, a literal one as written.
+ *
+ * @param {string | undefined} basic
+ * @param {string | undefined} literal
+ * @returns {string | typeof UNDECODABLE}
+ */
+export function tomlString(basic, literal) {
+  if (basic === undefined) return literal ?? '';
+  let bad = false;
+  const decoded = basic.replace(/\\(?:u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|(.))/gu, (all, short, long, single) => {
+    if (single !== undefined) {
+      if (Object.hasOwn(ESCAPES, single)) return ESCAPES[single];
+      bad = true;
+      return all;
+    }
+    const point = Number.parseInt(short ?? long, 16);
+    if (point > 0x10ffff || (point >= 0xd800 && point <= 0xdfff)) { bad = true; return all; }
+    return String.fromCodePoint(point);
+  });
+  return bad ? UNDECODABLE : decoded;
+}
+
+const chord = (value) => (value === UNDECODABLE ? value : normalize(value));
 const OWN = new RegExp(String.raw`^\s*(\w+)${VALUE}`, 'u');
 const BOUND = new RegExp(String.raw`^\s*key${VALUE}`, 'u');
 
@@ -81,7 +110,7 @@ const BOUND = new RegExp(String.raw`^\s*key${VALUE}`, 'u');
  * @returns {Set<string>}
  */
 export function quotedStrings(config) {
-  return new Set([...config.matchAll(/"([^"\n]*)"|'([^'\n]*)'/gu)].map((match) => normalize(match[1] ?? match[2])));
+  return new Set([...config.matchAll(new RegExp(STRING, 'gu'))].map((match) => chord(tomlString(match[1], match[2]))));
 }
 
 function withoutBlock(text) {
@@ -98,7 +127,7 @@ function withoutBlock(text) {
  *
  * @param {string} config
  * @param {string} defaults
- * @returns {Set<string>}
+ * @returns {Set<string | typeof UNDECODABLE>}
  */
 export function takenKeys(config, defaults) {
   const named = new Map();
@@ -113,11 +142,11 @@ export function takenKeys(config, defaults) {
   for (const line of config.split('\n')) {
     if (/^\s*\[/u.test(line)) inKeys = /^\s*\[keys\]\s*$/u.test(line);
     const own = inKeys && line.match(OWN);
-    if (own) named.set(own[1], own[2] ?? own[3]);
+    if (own) named.set(own[1], tomlString(own[2], own[3]));
     const bound = line.match(BOUND);
-    if (bound) taken.add(normalize(bound[1] ?? bound[2]));
+    if (bound) taken.add(chord(tomlString(bound[1], bound[2])));
   }
-  for (const value of named.values()) if (value) taken.add(normalize(value));
+  for (const value of named.values()) if (value) taken.add(chord(value));
   return taken;
 }
 
@@ -133,7 +162,8 @@ export function takenKeys(config, defaults) {
 export function planKeys(current, key, defaults = '') {
   if (!/^[\w+.-]+$/u.test(key)) throw new Error(`not a Herdr key binding: ${key}`);
   const rest = withoutBlock(current);
-  if (takenKeys(rest, defaults).has(normalize(key)) || quotedStrings(rest).has(normalize(key))) throw new Error(`${key} is already bound; choose another with --key`);
+  const clashes = (taken) => taken.has(normalize(key)) || taken.has(UNDECODABLE);
+  if (clashes(takenKeys(rest, defaults)) || clashes(quotedStrings(rest))) throw new Error(`${key} is already bound; choose another with --key`);
   const block = [BEGIN, '[[keys.command]]', `key = "${key}"`, 'type = "plugin_action"', `command = "${PLUGIN_ID}.open"`, 'description = "Pullboard: needs you"', END].join('\n');
   return (rest ? rest.replace(/\n*$/u, '\n\n') : '') + block + '\n';
 }

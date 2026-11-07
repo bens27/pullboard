@@ -235,3 +235,22 @@ test('the key anywhere in config.toml as a quoted string is refused, whatever it
     assert.equal(existsSync(installed), false);
   }
 });
+
+test('a TOML basic string is compared after its escapes are decoded; an unknown escape counts as taken [B26]', (t) => {
+  const clashes = [
+    '[[keys.command]]\nkey = "prefix\\u002By"\ntype = "shell"\ncommand = "echo mine"\n',
+    '[[keys.command]]\nkey = "\\u0070refix+\\U00000079"\n',
+    '[keys]\nsettings = "pre\\tfix" # "prefix\\x2by"\n',
+  ];
+  for (const config of clashes) {
+    const { cfg, run } = home(t, { config });
+    const before = snapshot(cfg);
+    const clash = run();
+    assert.equal(clash.status, 1, config);
+    assert.match(clash.err, /prefix\+y is already bound; choose another with --key/, config);
+    assert.deepEqual(snapshot(cfg), before);
+  }
+  const literal = home(t, { config: "[[keys.command]]\nkey = 'prefix\\u002By'\ndescription = \"say \\\"hi\\\"\"\n" });
+  const kept = literal.run();
+  assert.equal(kept.status, 0, kept.err);
+});
