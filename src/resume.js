@@ -131,16 +131,51 @@ export function commitOwnerLines(owners) {
  * The person's row decisions recorded on the board but not yet applied to the row file. The local
  * view records a decision silently, so resume must name it or the coordinator never applies it.
  *
- * A stale decision is left out: spec apply refuses it STALE_ROW_DECISION, so naming it would loop.
+ * One stale decision leaves none to apply: spec apply preflights every pending decision and refuses
+ * the whole batch STALE_ROW_DECISION, so naming the valid ones would loop.
  *
  * @param {ReturnType<typeof store.rowDecisions>} records
  * @param {{ id: string, kind: string }[]} [stale] staleRowDecisions for the same records
  * @returns {{ id: string, kind: string, decision: string }[]}
  */
 export function pendingRowApply(records, stale = []) {
-  const blocked = new Set(stale.map(({ kind, id }) => `${kind}:${id}`));
-  return records.filter((record) => !record.applied && !blocked.has(`${record.kind}:${record.id}`))
-    .map(({ id, kind, decision }) => ({ id, kind, decision }));
+  if (stale.length) return [];
+  return records.filter((record) => !record.applied).map(({ id, kind, decision }) => ({ id, kind, decision }));
+}
+
+/**
+ * The stale decisions that block spec apply, each with the step its STALE_ROW_DECISION refusal names.
+ *
+ * @param {{ id: string, kind: string, why: string, next: string }[]} stale staleRowDecisions
+ * @returns {{ id: string, kind: string, why: string, next: string }[]}
+ */
+export function staleRowApply(stale) {
+  return stale.map(({ id, kind, why, next }) => ({ id, kind, why, next }));
+}
+
+/** One stale decision as resume says it: its refusal and the step that clears it. */
+const blocker = (record) => `${record.why.replace(/^STALE: /u, '')}; ${record.next}`;
+
+/**
+ * @param {ReturnType<typeof staleRowApply>} stale
+ * @returns {string[]}
+ */
+export function staleRowLines(stale) {
+  if (!stale.length) return [];
+  return [`No recorded row decision can be applied until the person decides again: ${stale.map(blocker).join('; ')}. spec apply refuses every pending decision STALE_ROW_DECISION until then.`];
+}
+
+/**
+ * The coordinator's next step with a stale row decision, so the person's new decision comes first:
+ * apply cannot run, and every other step would plan against rows the person has not decided.
+ *
+ * @param {ReturnType<typeof staleRowApply>} stale
+ * @param {string} next the step the board names otherwise
+ * @returns {string}
+ */
+export function staleFirst(stale, next) {
+  if (!stale.length) return next;
+  return `get the person's decision again first, since no row decision applies while one is stale: ${stale.map(blocker).join('; ')}; then ${next}`;
 }
 
 /** One decision as resume says it: `G9 approved`. */

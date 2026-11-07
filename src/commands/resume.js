@@ -58,6 +58,9 @@ import {
   inboxFirst,
   pendingRowApply,
   rowDecisionLines,
+  staleFirst,
+  staleRowApply,
+  staleRowLines,
 } from '../resume.js';
 import {
   resumeSentinels,
@@ -185,6 +188,7 @@ export async function resumeHere(io, view, diagnostics = false, { json = false }
     const decisionSections = isMain ? coordinatorDecisionSections(board, ctx) : null;
     const { shouts = [], ...decisions } = decisionSections ?? {};
     const rowDecisions = isMain ? store.rowDecisions(board) : [];
+    const staleDecisions = isMain ? staleRowDecisions(rowDecisions, root, ctx.config) : [];
     const needsState = resumeNeeds(root, { board, config: ctx.config, includeRigorUndrafted: me.id === COORDINATOR });
     let proofStatsFallback;
     const flow = decisionSections ? proofStats(board, { now: ctx.clock.now().getTime(),
@@ -198,7 +202,7 @@ export async function resumeHere(io, view, diagnostics = false, { json = false }
       health: recordedHealthFindings(board),
       all,
       needsYou: personNeeds(needsState),
-      ...(isMain ? { pendingApply: pendingRowApply(rowDecisions, staleRowDecisions(rowDecisions, root, ctx.config)) } : {}),
+      ...(isMain ? { pendingApply: pendingRowApply(rowDecisions, staleDecisions), staleApply: staleRowApply(staleDecisions) } : {}),
       ...(me.id === COORDINATOR ? { rigor: { undrafted: needsState.rigorUndrafted, ...(needsState.rigorNotice ? { notice: needsState.rigorNotice } : {}) } } : {}),
       ...(decisionSections ? { ...decisions, ...(diagnostics ? verifiedMergeGroups(root, pendingMerges, shouts, ctx.clock.now().getTime()) : {}),
         flow, ...(proofStatsFallback ? { proofStatsFallback } : {}) } : {}),
@@ -328,6 +332,7 @@ export async function resumeHere(io, view, diagnostics = false, { json = false }
       ? `waiting on the person: #${need.id} from ${need.ref} (${span(ctx, need.at)}): ${firstLine(need.text)}`
       : `needs the person: ${need.ref}: ${firstLine(need.text)} (${need.what})`);
     for (const line of rowDecisionLines(card.pendingApply, root)) say(line);
+    for (const line of staleRowLines(card.staleApply)) say(line);
     if (card.rigor?.notice) say(card.rigor.notice);
     section(card.rigor?.undrafted ?? [], (cause) => `Rigor needs a proved draft: ${cause.key}, items ${cause.items.map(item => `#${item.id}`).join(', ')}; pullboard rigor draft "${cause.key.replaceAll('"', '\\"')}" "<rule>" --check "<command>" --red <commit> --green <commit>`);
     if (card.toVerify.length) say('review queue:');
@@ -358,6 +363,7 @@ export async function resumeHere(io, view, diagnostics = false, { json = false }
   else next = 'pullboard next; take its ranked work, including eligible reviews or work in another lane';
   if (card.setup) next = card.setup.agentNext ?? card.setup.command;
   if (card.pendingApply?.length) next = applyFirst(card.pendingApply, root, next);
+  if (card.staleApply?.length) next = staleFirst(card.staleApply, next);
   if (card.commits) next = commitFirst(card.commits, next);
   if (card.inbox) next = inboxFirst(card.inbox, next);
   io.result?.({ ...card, root, ...(diagnostics ? { dirty } : {}), next });

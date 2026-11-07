@@ -1177,6 +1177,8 @@ export function boardSetup(ctx, card, identity, { decisions: capturedDecisions }
   const decisions = capturedDecisions ?? withBoard(ctx, (board) => store.rowDecisions(board));
   const open = setupDecisionRows(ctx.info.root, ctx.config, decisions, rows);
   const toApply = open.filter(row => row.decision);
+  // spec apply refuses the whole batch while any decision is stale, so setup names no apply then.
+  const applicable = open.some(row => row.staleDecision) ? [] : toApply;
   const drafted = open.filter(row => !row.decision);
   const recordedComplete = setupReceiptMatches(ctx, identity, 'complete');
   const started = setupReceiptMatches(ctx, identity, 'started');
@@ -1222,11 +1224,11 @@ export function boardSetup(ctx, card, identity, { decisions: capturedDecisions }
     const command = `pullboard spec show ${rowIds[0]}`;
     // A pending question takes an answer, a draft row an approval: each gets the command that decides it.
     const { personCommand, verb, seatQuestion, seatNext } = personAsk(drafted);
-    return { step: 1, total: 5, ...current, steps, waitingOn: 'person-approval', rowIds, ...(toApply.length ? { approvedRowIds: toApply.map(row => row.id) } : {}),
+    return { step: 1, total: 5, ...current, steps, waitingOn: 'person-approval', rowIds, ...(applicable.length ? { approvedRowIds: applicable.map(row => row.id) } : {}),
       question: ctx.io.guidance((seat ? seatQuestion : `Waiting for the person to ${verb} ${names}.`) + drafted.filter(row => row.staleDecision).map(row => ` ${row.stage}`).join('')), command,
       personCommand,
-      afterAnswer: (toApply.length ? `The person already approved ${toApply.map(row => row.id).join(', ')}; pullboard spec apply writes them. ` : '') + 'The person approves draft rows and answers questions in Pullboard View or their own terminal; then the coordinator runs pullboard spec apply.',
-      agentNext: seat ? seatNext : (toApply.length ? 'pullboard spec apply for the approved rows; then ' : '') + `wait for the person to ${verb} ${names}; meanwhile ${command}` };
+      afterAnswer: (applicable.length ? `The person already approved ${applicable.map(row => row.id).join(', ')}; pullboard spec apply writes them. ` : '') + 'The person approves draft rows and answers questions in Pullboard View or their own terminal; then the coordinator runs pullboard spec apply.',
+      agentNext: seat ? seatNext : (applicable.length ? 'pullboard spec apply for the approved rows; then ' : '') + `wait for the person to ${verb} ${names}; meanwhile ${command}` };
   }
   return current ? { step: current.number, total: 5, ...current, steps } : null;
 }
