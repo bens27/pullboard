@@ -4,8 +4,8 @@
  */
 import { View, div } from 'gpui-kit';
 import { v_flex, h_flex } from 'gpui-base';
-import { theme, props, focused, exec } from 'herdr';
-import { boardModel, sectionNote, slotMove } from './read-model.js';
+import { theme, props, focused, exec, nextCommand } from 'herdr';
+import { boardModel, panelCommand, sectionNote, slotMove } from './read-model.js';
 import { readBoard, runMove } from './cli.js';
 
 // Each refresh starts five CLI reads; 15 s keeps the panel current without a steady load.
@@ -23,6 +23,22 @@ export default class Pullboard extends View {
     this.props = props() ?? {};
     this.refresh(cx);
     this.pollTask = cx.timer.every(POLL_MS, (cx) => this.refresh(cx));
+    this.listen(cx);
+  }
+
+  /** `herdr-app do pullboard.<command>` reaches the panel here, so an agent has every control a person clicks. */
+  listen(cx) {
+    cx.spawn(async (cx) => { for (;;) { const command = await nextCommand(); this.command(command, cx); cx.notify(); } });
+  }
+
+  /** Act on one command: the same refresh and slot moves the buttons make, under the same checks. */
+  command(command, cx) {
+    const action = panelCommand(command);
+    if ('refused' in action) { this.moveMessage = action.refused; return; }
+    if (action.refresh) { this.refresh(cx); return; }
+    const capacity = boardModel({ ...(this.reads ?? { errors: [] }), now: Date.now() }).capacity;
+    if (!capacity.controls) { this.moveMessage = 'slot counts are unknown; refresh once settings can be read'; return; }
+    this.move(action.move, action.delta, capacity, cx);
   }
 
   /** The board folder: the `board` prop, else the focused pane's folder at each refresh. */
@@ -58,7 +74,7 @@ export default class Pullboard extends View {
     });
   }
 
-  /** A small click-only button; a disabled one is drawn muted and takes no clicks. */
+  /** A small button; a disabled one is drawn muted and takes no clicks. */
   button(id, label, handler, enabled = true) {
     const el = div().id(id).px(8).py(2).rounded(4).bg(theme().raised).text_color(enabled ? theme().accent : theme().muted).child(label);
     return enabled ? el.on_click(handler) : el;

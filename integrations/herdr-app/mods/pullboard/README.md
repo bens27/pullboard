@@ -33,7 +33,13 @@ it says Unknown instead of its calm text; the panel never shows a failed read as
   and the board's own answer or refusal shows under the section. While `settings` cannot be
   read the buttons are off, since a move is relative to the current count.
 
-The slot buttons are click-only: the panel registers no `herdr-app do` command for them.
+People and agents share the slot controls. An agent runs, from any terminal:
+
+    herdr-app do pullboard.gateSlots-up      # or gateSlots-down, browserSlots-up, browserSlots-down
+    herdr-app do pullboard.refresh
+
+Each command makes the same move as its button, under the same checks, and the board's answer
+or refusal shows under Test capacity. An unknown command is refused there by name.
 
 ## Which board
 

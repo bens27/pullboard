@@ -248,3 +248,23 @@ export function slotMove(name, delta, { gateSlots, browserSlots, runners }) {
   if (next === 0 && !runners) return { refused: `${name} 0 needs a registered runner` };
   return { args: ['settings', name, String(next)] };
 }
+
+const SLOT_COMMANDS = {
+  'gateSlots-up': { move: 'gateSlots', delta: 1 },
+  'gateSlots-down': { move: 'gateSlots', delta: -1 },
+  'browserSlots-up': { move: 'browserSlots', delta: 1 },
+  'browserSlots-down': { move: 'browserSlots', delta: -1 },
+};
+
+/**
+ * Read a `herdr-app do pullboard.<command>` command, so an agent reaches the same slot moves as a
+ * click; each move still passes slotMove's checks against the current counts.
+ *
+ * @param {string} command
+ * @returns {{ move: string, delta: number } | { refresh: true } | { refused: string }}
+ */
+export function panelCommand(command) {
+  if (command === 'refresh') return { refresh: true };
+  if (Object.hasOwn(SLOT_COMMANDS, command)) return { ...SLOT_COMMANDS[command] };
+  return { refused: `unknown panel command ${command}; use gateSlots-up, gateSlots-down, browserSlots-up, browserSlots-down or refresh` };
+}
