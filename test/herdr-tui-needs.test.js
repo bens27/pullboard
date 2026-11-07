@@ -29,13 +29,17 @@ test('only declared prompt keys are filled, each shell-quoted, defaults when una
   assert.equal(fillCommand({ command: 'pullboard relay status' }, {}), 'pullboard relay status');
 });
 
-test('a declared placeholder inside quotes is refused, since a quoted answer would run as shell [B26]', () => {
+test('a declared placeholder near a quote, backslash or $( is refused, since the answer could run as shell [B26]', () => {
   const prompts = [{ key: 'note' }];
   const attack = { note: '$(touch /tmp/pwned)' };
-  assert.throws(() => fillCommand({ command: "printf '%s' '{note}'", prompts }, attack), /inside quotes/);
-  assert.throws(() => fillCommand({ command: 'echo "said: {note}"', prompts }, attack), /inside quotes/);
-  assert.throws(() => fillCommand({ command: "echo 'a\\' \"{note}\"", prompts }, attack), /inside quotes/);
-  assert.equal(fillCommand({ command: "echo \\'{note} '{other}' \"${HOME}\"", prompts }, attack), "echo \\''$(touch /tmp/pwned)' '{other}' \"${HOME}\"");
+  const refused = [
+    "printf '%s' '{note}'", 'echo "said: {note}"', "echo 'a\\' \"{note}\"", 'echo "\\{note}"',
+    '"$(printf "%s" "{note}")"', '"$(echo " {note} ")"', '\\{note}', '$(echo {note})', 'echo `{note}`',
+    "echo \\'{note} '{other}' \"${HOME}\"",
+  ];
+  for (const command of refused) assert.throws(() => fillCommand({ command, prompts }, attack), /cannot be filled safely/, command);
+  assert.equal(fillCommand({ command: "echo {note} ${HOME} '{x'", prompts }, attack), "echo '$(touch /tmp/pwned)' ${HOME} '{x'");
+  assert.equal(fillCommand({ command: 'echo "$(date)" {other}', prompts }, attack), 'echo "$(date)" {other}');
 });
 
 test('needs JSON of another version or shape is refused, the fixture parses [B26]', () => {
@@ -52,7 +56,7 @@ test('step state: done steps, the one next step, and steps waiting behind it [B2
   assert.equal(nextStep(ask).n, 2);
   assert.equal(nextStep({ ...ask, next: null }), null);
   assert.equal(nextStep({ ...ask, next: 1 }), null);
-  assert.equal(askId(ask), '3');
+  assert.equal(askId(ask), '3f9a0c12');
 });
 
 test('the tab is created in the given workspace and folder, and its root pane is read [B26]', () => {
@@ -91,7 +95,7 @@ test('an ask step that exits 0 is recorded done from the board root, after runni
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /\[exit 0\]/u);
   assert.equal(readFileSync(join(cwd, 'out'), 'utf8'), `${cwd}\nit's`);
-  assert.equal(log, `${root}|ask done 3 --step 2\n`);
+  assert.equal(log, `${root}|ask done 3f9a0c12 --step 2 --as person\n`);
   assert.equal(selfGone, true);
 });
 
@@ -143,15 +147,15 @@ test('the popup runs only the next step, after its prompts and a confirm [B26]',
   assert.ok(render(idle.state, 80, 40).includes('Every step is done.   esc back   r refresh   q close'));
 });
 
-test('the popup refuses a step whose placeholder sits inside quotes and never runs it [B26]', () => {
+test('the popup refuses a step whose placeholder it cannot fill safely and never runs it [B26]', () => {
   const step = { n: 1, label: 'Note it', command: "printf '%s' '{note}'", cwd: '/r', prompts: [{ key: 'note', label: 'Note' }], done: false };
-  const need = { id: 'ask:9', kind: 'ask', source: 'ask', title: 'Quoted', why: '', from: null, created: null, steps: [step], next: 1 };
+  const need = { id: 'ask:9c0ffee1', kind: 'ask', source: 'ask', title: 'Quoted', why: '', from: null, created: null, steps: [step], next: 1 };
   for (const command of [step.command, 'echo "{note}"']) {
     const start = loaded(initialState(), { root: '/r', needs: [{ ...need, steps: [{ ...step, command }] }] });
     const { state, effects } = keys(start, 'enter', 'enter', ...'$(id)', 'enter', 'y', 'enter');
     assert.deepEqual(effects, [], command);
     assert.equal(state.mode, 'note', command);
-    assert.match(state.note, /inside quotes/);
+    assert.match(state.note, /cannot be filled safely/);
     assert.ok(render(state, 80, 40).some((line) => line.includes('cannot run safely')), command);
   }
 });

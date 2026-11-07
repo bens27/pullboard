@@ -35,7 +35,7 @@ function beginStep(state) {
   return { state: { ...begun, mode: 'prompt', input: prompts[0].default ?? '' } };
 }
 
-// A template fillCommand refuses (a placeholder inside quotes) becomes a note and never runs,
+// A template fillCommand refuses (an unsafe placeholder) becomes a note and never runs,
 // checked before the prompts so the person does not answer them in vain.
 function refusal(step, values) {
   try { fillCommand(step, values); return null; }
