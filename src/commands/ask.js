@@ -1,10 +1,14 @@
 /** The pullboard ask command: a seat files steps for the person, who runs them at their own pace [B26]. */
+import { randomBytes } from 'node:crypto';
 import {
   dirname,
   resolve,
 } from 'node:path';
 import { Refused } from '../refused.js';
-import { parseAskStep } from '../asks.js';
+import {
+  ASK_ID,
+  parseAskStep,
+} from '../asks.js';
 import {
   actOn,
   ordered,
@@ -23,11 +27,11 @@ function stepNumber(values) {
   return Number(raw[0]);
 }
 
-/** Read an ask id as the number pullboard needs shows, with or without its ask: prefix. */
+/** Read an ask id as pullboard needs shows it, with or without its ask: prefix. */
 function askId(value) {
   const text = String(value ?? '').replace(/^ask:/u, '');
-  if (!/^[1-9]\d*$/u.test(text)) throw new Refused('BAD_ASK', 'name an ask by its number from pullboard needs');
-  return Number(text);
+  if (!ASK_ID.test(text)) throw new Refused('BAD_ASK', 'name an ask by its id from pullboard needs, e.g. ask:3f9a0c12');
+  return text;
 }
 
 /** Say one ask on one line with its next step. */
@@ -48,7 +52,7 @@ export async function run(io, { first, second, rest, values }) {
       const title = [first, second, ...rest].filter(word => word !== undefined).join(' ');
       const steps = [values.step ?? []].flat().map(parseAskStep);
       const cwd = values.cwd ? resolve(values.cwd) : mainRoot(ctx.info);
-      row = await ordered(ctx, board, 'recordAsk', [{ agentId: me.id, action: 'file',
+      row = await ordered(ctx, board, 'recordAsk', [{ agentId: me.id, action: 'file', id: randomBytes(4).toString('hex'),
         ask: { title, why: values.why ?? '', cwd, personOnly: values['person-only'] === true, steps } }]);
     }
     io.result?.({ ask: row });

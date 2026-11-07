@@ -14,6 +14,8 @@ import { ASK_ENGINE } from './ask-engine.js';
 
 export { ASK_ENGINE };
 const LINE = /[\r\n\0]/u;
+/** The id a command draws for each ask, so every replica names it the same however events interleave. */
+export const ASK_ID = /^[0-9a-f]{8}$/u;
 const PLACEHOLDER = /(?<!\$)\{([a-z][a-z0-9_-]{0,31})\}/gu;
 
 /** Split one `--step "<label>::<command>"` value; the label is what the person reads on the button. */
@@ -68,19 +70,20 @@ function askFiling(value) {
     steps: steps.map(step => ({ label: step.label.trim(), command: step.command.trim() })) };
 }
 
-/** Every ask in filing order, replayed from its events; ids count from 1 so every replica agrees. */
+/** Every ask in filing order, replayed from its events and keyed by the id its filing move carried. */
 export function asks(board) {
-  const rows = [];
+  const rows = new Map();
   const events = board.db.prepare("SELECT * FROM event WHERE event_kind = 'ask' ORDER BY event_id").all();
   for (const event of events) {
     const detail = JSON.parse(event.event_detail);
     if (detail.engine !== ASK_ENGINE) continue;
     if (detail.action === 'file') {
-      rows.push({ id: rows.length + 1, ...detail.ask, from: event.event_by, created: event.event_at, status: 'open',
+      if (!ASK_ID.test(detail.id ?? '') || rows.has(detail.id)) continue;
+      rows.set(detail.id, { id: detail.id, ...detail.ask, from: event.event_by, created: event.event_at, status: 'open',
         steps: detail.ask.steps.map((step, index) => ({ n: index + 1, ...step, prompts: stepPrompts(step.command), done: false })) });
       continue;
     }
-    const row = rows[detail.id - 1];
+    const row = rows.get(detail.id);
     if (!row || row.status !== 'open') continue;
     if (detail.action === 'done') {
       Object.assign(row.steps[detail.step - 1], { done: true, doneBy: event.event_by, doneAt: event.event_at,
@@ -90,7 +93,7 @@ export function asks(board) {
       Object.assign(row, { status: 'dropped', closedAt: event.event_at, reason: detail.reason, droppedBy: event.event_by });
     }
   }
-  return rows;
+  return [...rows.values()];
 }
 
 /** Tell the filer at their next inbox read; a shout is a direct entry there, never an interrupt. */
@@ -109,8 +112,11 @@ export function recordAsk(board, { agentId, action, ask, id, step, note, reason 
       throw new Refused('NOT_JOINED', 'join this board before filing or closing an ask: pullboard join <lane>');
     }
     if (action === 'file') {
-      logEvent(board, agentId, 'ask', null, { action, ask: askFiling(ask), engine: ASK_ENGINE });
-      return asks(board).at(-1);
+      if (typeof id !== 'string' || !ASK_ID.test(id) || asks(board).some(entry => entry.id === id)) {
+        throw new Refused('BAD_ASK', 'file an ask with a new id of 8 lowercase hex characters; pullboard ask draws one');
+      }
+      logEvent(board, agentId, 'ask', null, { action, id, ask: askFiling(ask), engine: ASK_ENGINE });
+      return asks(board).find(entry => entry.id === id);
     }
     const row = asks(board).find(entry => entry.id === id);
     if (!row) throw new Refused('NO_ASK', `no ask ${id}; see pullboard needs`);

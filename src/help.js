@@ -362,7 +362,7 @@ const HELP_EXAMPLES = {
   intake: 'pullboard intake https://github.com/owner/repo/pull/7 --criterion "behavior" --check "npm test"',
   companion: 'pullboard companion 12 api "Provide the API" --key api-part',
   ask: 'pullboard ask "Approve the deploy key" --step "Approve::pullboard spec approve G4"', needs: 'pullboard needs',
-  'ask done': 'pullboard ask done 1', 'ask drop': 'pullboard ask drop 1 --reason "no longer needed"',
+  'ask done': 'pullboard ask done 3f9a0c12', 'ask drop': 'pullboard ask drop 3f9a0c12 --reason "no longer needed"',
   add: ADD_EXAMPLE, move: 'pullboard move ~web#3 --to web', list: 'pullboard list web', show: 'pullboard show 12',
   claim: 'pullboard claim 12', submit: 'pullboard submit 12', 'next --verify': 'pullboard next --verify',
   fact: 'pullboard fact 12 measurement "The check passes in 8 seconds"',

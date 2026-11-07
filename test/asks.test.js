@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import * as store from '../src/board.js';
+import { recordAsk } from '../src/asks.js';
 import { needsList } from '../src/needs-steps.js';
 import { createE2eHelpers } from './e2e-helpers.js';
 
@@ -27,7 +28,8 @@ test('a seat files an ask, the person finishes it step by step, and the filer he
   const box = helpers.project('true');
   const filed = run(box, box.web, 'ask', 'Rotate the deploy key', '--step', 'Make the key::ssh-keygen -f {path}',
     '--step', 'Approve it::pullboard spec approve G1', '--why', 'the old key leaked', '--person-only', '--json').ask;
-  assert.equal(filed.id, 1);
+  assert.match(filed.id, /^[0-9a-f]{8}$/u);
+  const id = filed.id;
   assert.equal(filed.status, 'open');
   assert.deepEqual(filed.steps.map(step => step.prompts), [[{ key: 'path', label: 'path', default: '' }], []]);
   const web = filed.from;
@@ -35,24 +37,24 @@ test('a seat files an ask, the person finishes it step by step, and the filer he
   let needs = run(box, box.repo, 'needs', '--json');
   assert.equal(needs.version, 1);
   assert.equal(needs.root, box.repo);
-  const ask = needs.needs.find(need => need.id === 'ask:1');
+  const ask = needs.needs.find(need => need.id === `ask:${id}`);
   assert.equal(ask.source, 'ask');
   assert.equal(ask.from, web);
   assert.equal(ask.next, 1);
   assert.deepEqual(ask.steps.map(step => [step.n, step.cwd, step.personOnly, step.done]), [[1, box.repo, true, false], [2, box.repo, true, false]]);
-  assert.match(run(box, box.repo, 'needs'), /ask:1 {2}Rotate the deploy key {2}\(from .+\)\n {2}step 1\/2: ssh-keygen -f \{path\}/u);
+  assert.match(run(box, box.repo, 'needs'), new RegExp(String.raw`ask:${id} {2}Rotate the deploy key {2}\(from .+\)\n {2}step 1/2: ssh-keygen -f \{path\}`, 'u'));
 
-  run(box, box.repo, 'ask', 'done', '1', '--note', 'made it');
+  run(box, box.repo, 'ask', 'done', id, '--note', 'made it');
   needs = run(box, box.repo, 'needs', '--json');
-  assert.equal(needs.needs.find(need => need.id === 'ask:1').next, 2);
+  assert.equal(needs.needs.find(need => need.id === `ask:${id}`).next, 2);
   assert.deepEqual(shoutsTo(box, web), [], 'a step done is not news for the filer');
 
-  assert.equal(box.run(box.repo, 'ask', 'done', '1', '--step', '1').code, 1, 'a done step cannot be done again');
-  run(box, box.repo, 'ask', 'done', 'ask:1', '--step', '2');
+  assert.equal(box.run(box.repo, 'ask', 'done', id, '--step', '1').code, 1, 'a done step cannot be done again');
+  run(box, box.repo, 'ask', 'done', `ask:${id}`, '--step', '2');
   needs = run(box, box.repo, 'needs', '--json');
-  assert.equal(needs.needs.some(need => need.id === 'ask:1'), false, 'a finished ask leaves the list');
-  assert.deepEqual(shoutsTo(box, web), ['Ask 1 done: Rotate the deploy key']);
-  assert.equal(box.run(box.repo, 'ask', 'done', '1').code, 1, 'a closed ask stays closed');
+  assert.equal(needs.needs.some(need => need.id === `ask:${id}`), false, 'a finished ask leaves the list');
+  assert.deepEqual(shoutsTo(box, web), [`Ask ${id} done: Rotate the deploy key`]);
+  assert.equal(box.run(box.repo, 'ask', 'done', id).code, 1, 'a closed ask stays closed');
 });
 
 test('only the filer or the coordinator drops an ask, with a reason [B26]', () => {
@@ -60,15 +62,15 @@ test('only the filer or the coordinator drops an ask, with a reason [B26]', () =
   const other = join(box.dir, 'second');
   box.git(box.repo, 'worktree', 'add', '-q', '--detach', other, 'HEAD');
   run(box, other, 'join', 'api', '--model', 'fixture-asks');
-  run(box, box.web, 'ask', 'Check the phone', '--step', 'Open it::open https://example.invalid', '--cwd', box.dir);
-  assert.equal(run(box, box.web, 'needs', '--json').needs.find(need => need.id === 'ask:1').steps[0].cwd, box.dir);
-  const refused = box.run(other, 'ask', 'drop', '1', '--reason', 'not mine', '--json');
+  const { id } = run(box, box.web, 'ask', 'Check the phone', '--step', 'Open it::open https://example.invalid', '--cwd', box.dir, '--json').ask;
+  assert.equal(run(box, box.web, 'needs', '--json').needs.find(need => need.id === `ask:${id}`).steps[0].cwd, box.dir);
+  const refused = box.run(other, 'ask', 'drop', id, '--reason', 'not mine', '--json');
   assert.equal(refused.code, 1);
   assert.equal(JSON.parse(refused.out).error.code, 'ASK_NOT_FILER');
-  assert.equal(JSON.parse(box.run(box.repo, 'ask', 'drop', '1', '--json').out).error.code, 'BAD_ASK');
-  const dropped = run(box, box.repo, 'ask', 'drop', '1', '--reason', 'done another way', '--json').ask;
+  assert.equal(JSON.parse(box.run(box.repo, 'ask', 'drop', id, '--json').out).error.code, 'BAD_ASK');
+  const dropped = run(box, box.repo, 'ask', 'drop', id, '--reason', 'done another way', '--json').ask;
   assert.equal(dropped.status, 'dropped');
-  assert.deepEqual(shoutsTo(box, dropped.from), ['Ask 1 dropped: Check the phone\nReason: done another way']);
+  assert.deepEqual(shoutsTo(box, dropped.from), [`Ask ${id} dropped: Check the phone\nReason: done another way`]);
   assert.equal(JSON.parse(box.run(box.web, 'ask', 'No steps', '--json').out).error.code, 'BAD_ASK');
 });
 
@@ -106,4 +108,22 @@ test('a step with a placeholder may not quote, escape or substitute around it; $
   }
   const filed = run(box, box.web, 'ask', 'Bare', '--step', "Say it::echo {note} ${HOME} '{x' 'a b'", '--step', 'Plain::echo "no keys" $(date)', '--json').ask;
   assert.deepEqual(filed.steps.map(step => step.prompts.map(prompt => prompt.key)), [['note'], []]);
+});
+
+test('an ask keeps the random id its command chose, and the move refuses a malformed or reused one [B26]', () => {
+  const box = helpers.project('true');
+  const first = run(box, box.web, 'ask', 'One', '--step', 'Go::true', '--json').ask;
+  const second = run(box, box.web, 'ask', 'Two', '--step', 'Go::true', '--json').ask;
+  assert.notEqual(first.id, second.id);
+  assert.equal(JSON.parse(box.run(box.repo, 'ask', 'done', '1', '--json').out).error.code, 'BAD_ASK', 'a position is not an id');
+  assert.equal(JSON.parse(box.run(box.repo, 'ask', 'done', 'ffffffff', '--json').out).error.code, 'NO_ASK');
+  run(box, box.repo, 'ask', 'drop', first.id, '--reason', 'not needed');
+  assert.deepEqual(run(box, box.repo, 'needs', '--json').needs.filter(need => need.kind === 'ask').map(need => need.id), [`ask:${second.id}`]);
+  const board = store.openBoard(join(box.repo, '.git', 'pullboard', 'board.sqlite'));
+  try {
+    const ask = { title: 'Direct', cwd: box.repo, steps: [{ label: 'Go', command: 'true' }] };
+    for (const id of [undefined, '1', 'ABCDEF12', second.id]) {
+      assert.throws(() => recordAsk(board, { agentId: store.PERSON, action: 'file', id, ask }), { code: 'BAD_ASK' }, String(id));
+    }
+  } finally { store.closeBoard(board); }
 });
