@@ -147,3 +147,14 @@ test('the person alone finishes a person-only ask; the filer, coordinator or per
   assert.equal(steps.at(-1).status, 'done');
   assert.deepEqual(steps.at(-1).steps.map(step => step.doneBy), [steps[0].from, 'coordinator', store.PERSON]);
 });
+
+test('a step is marked done only when every step before it is [B26]', () => {
+  const box = helpers.project('true');
+  const id = run(box, box.web, 'ask', 'Ordered', '--step', 'A::true', '--step', 'B::true', '--step', 'C::true', '--json').ask.id;
+  const code = (...args) => JSON.parse(box.run(box.web, 'ask', 'done', id, ...args, '--json').out).error?.code ?? 'ok';
+  assert.equal(code('--step', '2'), 'BAD_ASK', 'step 2 before step 1');
+  assert.equal(code('--step', '1'), 'ok');
+  assert.equal(code('--step', '3'), 'BAD_ASK', 'step 3 before step 2');
+  assert.equal(code('--step', '2'), 'ok');
+  assert.equal(code(), 'ok', 'no --step takes the next one');
+});

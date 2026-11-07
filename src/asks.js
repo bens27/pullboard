@@ -132,10 +132,11 @@ export function recordAsk(board, { agentId, action, ask, id, step, note, reason,
       if (![row.from, COORDINATOR, PERSON].includes(by)) {
         throw new Refused('ASK_NOT_FILER', 'only the seat that filed an ask, the coordinator or the person marks its steps done');
       }
-      const index = step ?? row.steps.find(entry => !entry.done).n;
-      if (!Number.isSafeInteger(index) || !row.steps[index - 1] || row.steps[index - 1].done
-          || typeof (note ?? '') !== 'string' || LINE.test(note ?? '')) {
-        throw new Refused('BAD_ASK', `name a step of ask ${id} that is not done yet, with an optional one-line --note`);
+      // Steps run in order, so only the first one not done yet can be marked.
+      const next = row.steps.find(entry => !entry.done).n;
+      const index = step ?? next;
+      if (index !== next || typeof (note ?? '') !== 'string' || LINE.test(note ?? '')) {
+        throw new Refused('BAD_ASK', `mark step ${next} of ask ${id}, the first not done yet, with an optional one-line --note`);
       }
       logEvent(board, by, 'ask', null, { action, id, step: index, ...(note?.trim() ? { note: note.trim() } : {}), ...(asPerson ? { channel } : {}), engine: ASK_ENGINE });
       const done = asks(board).find(entry => entry.id === id);
