@@ -1235,7 +1235,7 @@ export async function syncRelay(root, io) {
       // In the background, a command never builds the presentation to compare it: a saved, unsent checkpoint asks
       // for an upload, and any other command asks the publisher to compare, so a spec edit alone still reaches the
       // phone. Otherwise the command publishes a changed presentation itself, as before #1014.
-      if (checkpointInBackground()) { if (state.checkpoint) scheduleCheckpoint(root, file); else requestCheckpointCheck(root, file); }
+      if (checkpointInBackground()) { if (state.checkpoint) scheduleCheckpoint(root, file); else requestCheckpointCheck(root, file, { pause: state.checkpointRefusal ?? null }); }
       else if (state.checkpoint || state.presentationDigest !== presentationDigest(relayPresentation(root))) await publishCheckpoint(root, file, state, io);
       await deliverDeviceWraps(root, io);
       if (io.keyRequestsWaiting && !state.environment) await (await import('./relay-handover.js')).handOverKeys(root, state, readBoardKey(state.board), request, io); // an agent token never hands over a key

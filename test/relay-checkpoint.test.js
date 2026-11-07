@@ -149,6 +149,34 @@ test('a spec edit with no move reaches the next checkpoint, and an idle command 
   assert.ok(elapsed < 5_000, `the spec edit reached a checkpoint in ${elapsed} ms`); // budget: ceiling from the review: a presentation-only change goes out within five seconds.
 });
 
+test('repeated syncs on an unchanged board ask the publisher once, and a spec edit still asks [C7]', async (t) => {
+  const inline = process.env[CHECKPOINT_BACKGROUND_ENV];
+  delete process.env[CHECKPOINT_BACKGROUND_ENV];
+  t.after(() => { if (inline === undefined) delete process.env[CHECKPOINT_BACKGROUND_ENV]; else process.env[CHECKPOINT_BACKGROUND_ENV] = inline; });
+  const box = await relayClientFixture(t);
+  await box.link();
+  const warm = box.calls.length;
+  assert.equal((await box.cli('shout', 'all', 'warm up')).code, 0);
+  await publisherDone(box, warm, 1);
+  const asked = join(dirname(box.linkFile), 'relay-checkpoint.asked');
+  /** The ask the publisher last received, or null before any. */
+  const lastAsk = () => existsSync(asked) ? readFileSync(asked, 'utf8') : null;
+
+  // The first idle command may ask once, since the warm-up move changed the board after the last ask.
+  assert.equal((await box.cli('status')).code, 0);
+  const settled = lastAsk();
+  for (let index = 1; index <= 3; index += 1) {
+    assert.equal((await box.cli('status')).code, 0);
+    assert.equal(lastAsk(), settled, `idle command ${index} asked the publisher for no new check`);
+  }
+
+  writeFileSync(join(box.root, 'SPEC.md'), '# Checkpoint fixture spec\n\n## G · Goals\n\n- G1 [draft, must] SPEC_ONLY_IDLE_CHECK_C7 | gate: review\n');
+  const edited = box.calls.length;
+  assert.equal((await box.cli('status')).code, 0);
+  assert.notEqual(lastAsk(), settled, 'a spec edit with no move asks the publisher again');
+  await publisherDone(box, edited, 1);
+});
+
 test('a move returns while the publisher asks whether an upload pause is over [H5,H17]', async (t) => {
   const inline = process.env[CHECKPOINT_BACKGROUND_ENV];
   delete process.env[CHECKPOINT_BACKGROUND_ENV];
