@@ -313,3 +313,40 @@ test('a batch script runs steps in order, stops at the first failure and marks o
   assert.equal(passed.log, `${passed.root}|ask done 3f9a0c12 --step 2 --as person\n${passed.root}|ask done 3f9a0c12 --step 4 --as person\n`);
   assert.match(passed.result.stdout, /\[3\/3\] Ask four: done\n/u);
 });
+
+/** Join a command's wrapped lines back into one string: each line after its fixed-width prefix. */
+function unwrap(lines, first, rest) {
+  const at = lines.findIndex((line) => line.startsWith(first));
+  const parts = [lines[at].slice(first.length)];
+  for (let next = at + 1; lines[next]?.startsWith(rest) && !lines[next].slice(rest.length).startsWith('in '); next += 1) parts.push(lines[next].slice(rest.length));
+  return parts.join('');
+}
+
+test('a confirm screen wraps a long command and folder in full instead of cutting them off [B26]', () => {
+  const cwd = `/tmp/${'deep/'.repeat(12)}folder-end`;
+  const command = `pullboard relay pair --name {device} ${'--flag-x '.repeat(8)}--last-flag`;
+  const step = { n: 1, label: 'Long', command, cwd, prompts: [{ key: 'device', default: 'phone' }], done: false };
+  const need = { id: 'ask:0123abcd', kind: 'ask', source: 'ask', title: 'Long', steps: [step], next: 1 };
+  const filled = command.replace('{device}', "'phone'");
+  const start = loaded(initialState(), { root: '/r', needs: [need] });
+
+  const single = keys(start, 'enter', 'enter', 'enter').state;
+  assert.equal(single.mode, 'confirm');
+  const one = render(single, 40, 60);
+  assert.ok(one.every((line) => line.length <= 40));
+  assert.equal(unwrap(one, '  ', '    '), filled);
+  assert.equal(unwrap(one, '  in ', '     '), cwd);
+
+  const batch = keys(start, ' ', 'r', 'enter').state;
+  assert.equal(batch.mode, 'batch');
+  const all = render(batch, 40, 60);
+  assert.ok(all.every((line) => line.length <= 40));
+  assert.equal(unwrap(all, '  1. ', '     '), filled);
+  assert.equal(unwrap(all, '     in ', '        '), cwd);
+  const short = render(batch, 40, 6);
+  assert.equal(short.length, 6);
+  const scrolled = [];
+  for (let down = 0; down < 30; down += 1) scrolled.push(...render(keys(batch, ...Array(down).fill('down')).state, 40, 6).slice(0, 5));
+  assert.ok(scrolled.some((line) => line.endsWith('--last-flag')));
+  assert.ok(scrolled.some((line) => line.endsWith('folder-end')));
+});

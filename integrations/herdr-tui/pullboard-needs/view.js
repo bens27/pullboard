@@ -184,12 +184,30 @@ function wrap(text, width) {
   return lines;
 }
 
+// A command or folder about to be authorized is cut at the character, never dropped: every
+// character stays on screen, and a continuation is indented under its first line.
+function hardWrap(text, first, rest, cols) {
+  const chars = [...String(text)];
+  const lines = [];
+  let prefix = first;
+  do {
+    const room = Math.max(1, cols - prefix.length);
+    lines.push(prefix + chars.splice(0, room).join(''));
+    prefix = rest;
+  } while (chars.length);
+  return lines;
+}
+
 // The footer stays on screen however long the batch is, so the person can always confirm or cancel.
-function batchLines(state, rows) {
+function batchLines(state, cols, rows) {
   const { filled } = state.batch;
   const body = [`Run these ${filled.length} steps in order in one new tab?`, ''];
-  filled.forEach(({ step, command }, index) => body.push(`  ${index + 1}. ${command}`, `     in ${step.cwd}`));
-  body.push('', 'Each ask step is marked done when it exits 0. The first step that fails stops the rest.', '');
+  filled.forEach(({ step, command }, index) => {
+    const number = `  ${index + 1}. `;
+    const indent = ' '.repeat(number.length);
+    body.push(...hardWrap(command, number, indent, cols), ...hardWrap(step.cwd, `${indent}in `, `${indent}   `, cols));
+  });
+  body.push('', ...wrap('Each ask step is marked done when it exits 0. The first step that fails stops the rest.', Math.max(20, cols - 2)), '');
   const room = Math.max(0, rows - 1);
   const scroll = Math.min(state.scroll, Math.max(0, body.length - room));
   const more = body.length > room ? 'up/down scroll   ' : '';
@@ -238,7 +256,7 @@ export function render(state, cols, rows) {
     const count = state.selected.length;
     lines.push('', count ? `up/down choose   space select   r/enter run selected (${count})   q close` : 'up/down choose   space select   enter open   r refresh   q close');
   } else if (state.mode === 'need') lines = needLines(state, width);
-  else if (state.mode === 'batch') return batchLines(state, rows).map((line) => [...line].slice(0, cols).join(''));
+  else if (state.mode === 'batch') return batchLines(state, cols, rows).map((line) => [...line].slice(0, cols).join(''));
   else if (state.mode === 'prompt' && state.batch) {
     const { items, index, promptIndex } = state.batch;
     const { need, step } = items[index];
@@ -248,7 +266,7 @@ export function render(state, cols, rows) {
     const prompt = state.step.prompts[state.promptIndex];
     lines = [state.need.title, '', `Step ${state.step.n}: ${state.step.label ?? ''}`, '', `${prompt.label ?? prompt.key}:`, `> ${state.input}_`, '', 'enter accept   esc cancel   ctrl+u clear'];
   } else {
-    lines = [state.need.title, '', `Run step ${state.step.n} in a new tab?`, '', `  ${state.command}`, `  in ${state.step.cwd}`, ''];
+    lines = [state.need.title, '', `Run step ${state.step.n} in a new tab?`, '', ...hardWrap(state.command, '  ', '    ', cols), ...hardWrap(state.step.cwd, '  in ', '     ', cols), ''];
     if (state.need.source === 'ask') lines.push('When it exits 0 the step is marked done on the board.', '');
     lines.push('y run   n cancel');
   }
