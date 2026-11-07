@@ -4,7 +4,13 @@
  */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { boardModel, parseJson, sectionNote, slotMove } from '../integrations/herdr-app/mods/pullboard/read-model.js';
+import {
+  boardModel,
+  panelCommand,
+  parseJson,
+  sectionNote,
+  slotMove,
+} from '../integrations/herdr-app/mods/pullboard/read-model.js';
 
 const NOW = Date.parse('2026-11-06T12:00:00.000Z');
 const ago = (minutes) => new Date(NOW - minutes * 60_000).toISOString();
@@ -195,4 +201,14 @@ test('a section whose read failed shows as unknown, never as calm [B26]', () => 
   assert.equal(sectionNote(calm, 'halts'), 'Nothing is stuck.');
   assert.equal(sectionNote(calm, 'capacity'), null);
   assert.equal(sectionNote(boardModel(board({ agents: [] })), 'seats'), 'No seats.');
+});
+
+test('a herdr-app do command names the same slot moves and refresh as the buttons [B26]', () => {
+  assert.deepEqual(panelCommand('gateSlots-up'), { move: 'gateSlots', delta: 1 });
+  assert.deepEqual(panelCommand('gateSlots-down'), { move: 'gateSlots', delta: -1 });
+  assert.deepEqual(panelCommand('browserSlots-up'), { move: 'browserSlots', delta: 1 });
+  assert.deepEqual(panelCommand('browserSlots-down'), { move: 'browserSlots', delta: -1 });
+  assert.deepEqual(panelCommand('refresh'), { refresh: true });
+  assert.match(panelCommand('gateSlots-sideways').refused, /unknown panel command gateSlots-sideways/u);
+  assert.match(panelCommand('shortSlots-up').refused, /unknown panel command/u);
 });
