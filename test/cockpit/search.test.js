@@ -2,19 +2,26 @@
 /** Cockpit search checks, using the shared real-board fixtures [N26]. */
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, constants, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { SPEC, machine, project, startView, chromeExecutable, openSnapshotChrome, closeSnapshotChrome, searchFor, press, allowLiveHold, holdLive } from './fixture.js';
 
-/** Copy Node into a path with spaces so executable wrappers exercise the path they cannot put in a shebang. */
+/**
+ * Copy Node into a path with spaces so executable wrappers exercise the path they cannot put in a shebang.
+ * A copy, not a symlink: Node resolves its own symlinked path, so process.execPath would lose the spaces.
+ */
 function nodeWithSpaces(root) {
   const folder = join(root, 'node with spaces');
   mkdirSync(folder, { recursive: true });
+  const real = realpathSync(process.execPath);
   const node = join(folder, 'node');
-  copyFileSync(realpathSync(process.execPath), node, constants.COPYFILE_FICLONE);
+  copyFileSync(real, node, constants.COPYFILE_FICLONE);
   chmodSync(node, 0o700);
+  // A dynamically linked Node (Homebrew's) finds libnode at @loader_path/../lib, so the copy needs that folder beside it.
+  const libs = join(dirname(real), '..', 'lib');
+  if (existsSync(libs)) symlinkSync(realpathSync(libs), join(root, 'lib'));
   return node;
 }
 
