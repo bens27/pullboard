@@ -6,12 +6,34 @@
  */
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import {
+  basename,
+  join,
+} from 'node:path';
 import { userInfo } from 'node:os';
-import { AGENT_SHELL_MARKERS, remoteShell, requirePersonChannel } from './person.js';
-import { policyOn, TOUCH_ID_CHANNEL } from './policy-settings.js';
-import { closeBoard, openBoardForRead } from './board.js';
+import {
+  AGENT_SHELL_MARKERS,
+  remoteShell,
+  requirePersonChannel,
+} from './person.js';
+import {
+  policyOn,
+  TOUCH_ID_CHANNEL,
+} from './policy-settings.js';
+import {
+  closeBoard,
+  openBoardForRead,
+} from './board.js';
 import { Refused } from './refused.js';
 
 export { TOUCH_ID_CHANNEL };

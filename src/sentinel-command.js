@@ -1,6 +1,10 @@
 /** CLI proposal and exact person decisions for board-owned watches [A6,D3]. */
 import { forPersonRequest } from './policy-settings.js';
-import { personChannelFor, requirePersonChannelOrTouchId, touchIdPolicyAt } from './touch-id.js';
+import {
+  personChannelFor,
+  requirePersonChannelOrTouchId,
+  touchIdPolicyAt,
+} from './touch-id.js';
 import { PERSON } from './board.js';
 import {
   requireSignedPerson,

@@ -1,7 +1,11 @@
 /** The pullboard spec command, in its own module so an item adding another command never edits these lines. */
 import { verifiedPasskeyRowDecision } from '../person-signing.js';
 import { forPersonRequest } from '../policy-settings.js';
-import { personChannelCheck, requirePersonChannelOrTouchId, touchIdPolicyAt } from '../touch-id.js';
+import {
+  personChannelCheck,
+  requirePersonChannelOrTouchId,
+  touchIdPolicyAt,
+} from '../touch-id.js';
 import {
   planRowVerificationApply,
   rowVerificationFindings,

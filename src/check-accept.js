@@ -3,7 +3,11 @@ import {
   forPersonRequest,
   personChannelAccepted,
 } from './policy-settings.js';
-import { personChannelCheck, requirePersonChannelOrTouchId, touchIdPolicyAt } from './touch-id.js';
+import {
+  personChannelCheck,
+  requirePersonChannelOrTouchId,
+  touchIdPolicyAt,
+} from './touch-id.js';
 import { CHECK_ACCEPT_ENGINE } from './move-engine-constants.js';
 export { CHECK_ACCEPT_ENGINE };
 /**

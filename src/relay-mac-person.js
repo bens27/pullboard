@@ -11,14 +11,30 @@
  * the kept file is useless without the person's finger on this Mac. Each person move unwraps it once,
  * with a prompt that names the move and its ids; there is no password fallback and no standing grant.
  */
-import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  createHash,
+  randomUUID,
+} from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { machineHome } from './machine-home.js';
 import { requirePersonChannel } from './person.js';
 import { policyOn } from './policy-settings.js';
 import { Refused } from './refused.js';
-import { openWithTouchId, personActionFor, sealWithTouchId, touchIdReason, touchIdRefusal } from './touch-id.js';
+import {
+  openWithTouchId,
+  personActionFor,
+  sealWithTouchId,
+  touchIdReason,
+  touchIdRefusal,
+} from './touch-id.js';
 
 /** The label of the kept person sign-in; the relay origin names which relay it is for. */
 export const PERSON_KEYCHAIN_SERVICE = 'pullboard-relay-person';
