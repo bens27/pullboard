@@ -145,6 +145,11 @@ Work
   pullboard companion <parent> <lane> "<title>" --key <key> [--criterion "<criterion>"] [--specs <ids>]
                                         create one child in another lane; repeat the same parent, lane and key to find it
                                         --brief "<brief>"; --route strong|mid|light; only the coordinator sets --check "<command>"
+  pullboard ask "<title>" --step "<label>::<command>" [--step ...] [--why "<text>"] [--cwd <dir>] [--person-only]
+                                        file steps for the person to run in order; {key} in a command becomes a prompt
+  pullboard ask done <id> [--step <n>] [--note "<text>"]   mark a step done; the last step closes the ask
+  pullboard ask drop <id> --reason "<why>"  withdraw an ask (its filer or the coordinator); the filer hears at next inbox
+  pullboard needs [--json]              everything waiting on the person, each with the commands to run in order
   pullboard show <id> [--history]       an item, the criterion frozen at claim, its verdicts: the latest in full,
                                         earlier ones as one line; --history prints every note in full
   pullboard fact <id> <kind> <text> [--answers <bar-check-fact-id>] [--supersedes <fact-id>] [--ref path:lines@full-sha] [--implies <ids>]
@@ -356,6 +361,8 @@ const HELP_EXAMPLES = {
   join: 'pullboard join web --model "my-model"', resume: 'pullboard resume',
   intake: 'pullboard intake https://github.com/owner/repo/pull/7 --criterion "behavior" --check "npm test"',
   companion: 'pullboard companion 12 api "Provide the API" --key api-part',
+  ask: 'pullboard ask "Approve the deploy key" --step "Approve::pullboard spec approve G4"', needs: 'pullboard needs',
+  'ask done': 'pullboard ask done 1', 'ask drop': 'pullboard ask drop 1 --reason "no longer needed"',
   add: ADD_EXAMPLE, move: 'pullboard move ~web#3 --to web', list: 'pullboard list web', show: 'pullboard show 12',
   claim: 'pullboard claim 12', submit: 'pullboard submit 12', 'next --verify': 'pullboard next --verify',
   fact: 'pullboard fact 12 measurement "The check passes in 8 seconds"',

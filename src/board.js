@@ -348,6 +348,7 @@ export { landingWaivers, landingWaiverFor, waivedLandingProof } from './landing-
 export { acceptCheck } from './check-accept.js';
 export { declareJob, recordJobRun } from './recurring-jobs.js';
 export { proposeSentinel, decideSentinel, beginSentinelRun, finishSentinelRun } from './sentinels.js';
+export { asks, recordAsk } from './asks.js';
 export { flakeLedger, recordFlakeObservation } from './flakes.js';
 export { flakeQuarantines, gateRuns, recordGateRun } from './quarantine.js';
 export { personProposals, personSigning, proposePersonMove, setPersonSigning } from './person-signing.js'; // Signed person moves [E22].

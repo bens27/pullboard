@@ -157,6 +157,11 @@ const OPTIONS = {
   implies: { type: 'string' },
   owns: { type: 'string' },
   red: { type: 'string' },
+  // The ask command's options.
+  step: { type: 'string', multiple: true },
+  why: { type: 'string' },
+  cwd: { type: 'string' },
+  'person-only': { type: 'boolean' },
   green: { type: 'string' },
   help: { type: 'boolean', short: 'h' },
   version: { type: 'boolean', short: 'v' },
@@ -254,7 +259,7 @@ async function bindCheckoutSession(io, positionals, values) {
   if (command === 'takeover' && (positionals.length !== 1 || Object.keys(values).some((key) => key !== 'json'))) {
     throw new Refused('USAGE', 'pullboard takeover takes no arguments; run pullboard takeover [--json]');
   }
-  const writes = ['handoff', 'bar', 'init', 'join', 'worktree', 'hooks', 'hook', 'skills', 'add', 'companion', 'edit', 'fact', 'escalate', 'run', 'sweep',
+  const writes = ['handoff', 'bar', 'init', 'join', 'worktree', 'hooks', 'hook', 'skills', 'add', 'ask', 'companion', 'edit', 'fact', 'escalate', 'run', 'sweep',
     'next', 'claim', 'hold', 'release', 'submit', 'done', 'verify', 'check', 'merged', 'land', 'withdraw', 'refreeze', 'reopen', 'shout', 'answer', 'pass', 'import', 'milestone', 'takeover', 'forget'];
   if (!writes.includes(command) && !(command === 'lane' && first === 'add') && !(command === 'settings' && first) && !(command === 'spec' && first === 'apply') && !(command === 'relay' && ['on', 'off'].includes(first))) return;
   if (command === 'answer' && values.as === 'person') return;
