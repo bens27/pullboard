@@ -143,17 +143,18 @@ export function dependencyIds(item) {
 }
 
 
-/** Name project and built-in files separately, even when their basenames collide. */
-export function stateFileInputs(root, config) {
+/** Name project and built-in files separately, even when their basenames collide; `info` spares a Git lookup. */
+export function stateFileInputs(root, config, info = null) {
+  const { commonDir } = info ?? repoInfo(root);
   return [
     { name: `config:${CONFIG_FILE}`, path: join(root, CONFIG_FILE) },
     { name: `spec:${config.spec}`, path: join(root, config.spec) },
     { name: `practice:${config.practice}`, path: join(root, config.practice) },
     { name: 'builtin:standard-doctrine.md', path: new URL('./standard-doctrine.md', import.meta.url) },
     ...['signoffs.jsonl', 'signers', 'first-commit', 'signers.initial'].map(name => ({ name: `approval:${name}`, path: join(root, '.pullboard', name) })),
-    { name: 'fit:blueprint-fit.json', path: fitFile(repoInfo(root).commonDir) },
+    { name: 'fit:blueprint-fit.json', path: fitFile(commonDir) },
     // A new block changes Needs you without a board move, so the ledger is a state input [C6].
-    { name: 'blocks:blocks.jsonl', path: join(repoInfo(root).commonDir, BLOCKS_FILE) },
+    { name: 'blocks:blocks.jsonl', path: join(commonDir, BLOCKS_FILE) },
   ];
 }
 

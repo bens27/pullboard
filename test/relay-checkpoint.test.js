@@ -1,14 +1,15 @@
 /** @pullboard-test-input source-tree */
 /** A move sends only its own event; one background publisher sends the checkpoint once moves go quiet [H5]. */
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { relayClientFixture } from './relay-client-fixture.js';
-import { CHECKPOINT_BACKGROUND_ENV, CHECKPOINT_QUIET_ENV } from '../src/relay-checkpoint.js';
+import { CHECKPOINT_BACKGROUND_ENV, CHECKPOINT_QUIET_ENV, presentationInputs, requestCheckpointCheck } from '../src/relay-checkpoint.js';
 
 /** Whether a relay call uploads a checkpoint: an API1 state write or an API2 page publish. */
 function checkpointUpload(call) {
@@ -208,4 +209,63 @@ test('a move returns while the publisher asks whether an upload pause is over [H
   box.holdProbes(false);
   await publisherDone(box, from, 1);
   assert.equal(JSON.parse(readFileSync(box.linkFile, 'utf8')).checkpointRefusal, undefined, 'the ended pause is cleared');
+});
+
+/** A one-commit repository with a relay folder, outside any command's Git-fact scope, as the machine's sender sees it. */
+function senderRepo(t) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pullboard-checkpoint-inputs-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (...args) => execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { cwd: root, stdio: 'pipe' });
+  git('init', '-q', '-b', 'main');
+  writeFileSync(join(root, 'pullboard.json'), '{}\n');
+  git('add', 'pullboard.json');
+  git('commit', '-q', '-m', 'fixture');
+  const file = join(root, '.git', 'pullboard', 'relay.json');
+  mkdirSync(dirname(file), { recursive: true });
+  return { root, file, git };
+}
+
+/** Put a `git` first on PATH that records each call and fails; returns how many calls it saw. */
+function gitTrap(t) {
+  const folder = realpathSync(mkdtempSync(join(tmpdir(), 'pullboard-git-trap-')));
+  const calls = join(folder, 'calls');
+  writeFileSync(join(folder, 'git'), `#!/bin/sh\necho "$*" >> '${calls}'\nexit 1\n`, { mode: 0o755 });
+  const path = process.env.PATH;
+  process.env.PATH = `${folder}:${path}`;
+  const restore = () => { process.env.PATH = path; };
+  t.after(() => { restore(); rmSync(folder, { recursive: true, force: true }); });
+  return { calls: () => existsSync(calls) ? readFileSync(calls, 'utf8').trim().split('\n') : [], restore };
+}
+
+test('the sender\'s idle fingerprint runs no Git process once warm, on a branch or a detached primary [C7]', (t) => {
+  const { root, file, git } = senderRepo(t);
+  const warm = presentationInputs(root, file);
+  assert.notEqual(warm, null, 'the fingerprint reads a plain repository');
+  let trap = gitTrap(t);
+  assert.equal(presentationInputs(root, file), warm, 'an unchanged board keeps its fingerprint');
+  assert.deepEqual(trap.calls(), [], 'a warm fingerprint on a branch starts no Git process');
+  trap.restore();
+
+  // A primary checkout detached for review keeps its trunk in local config; the fingerprint must still follow it.
+  git('config', 'pullboard.trunk', 'refs/heads/main');
+  git('checkout', '-q', '--detach');
+  const detached = presentationInputs(root, file);
+  assert.notEqual(detached, null);
+  trap = gitTrap(t);
+  assert.equal(presentationInputs(root, file), detached, 'an unchanged detached board keeps its fingerprint');
+  writeFileSync(join(root, '.git', 'refs', 'heads', 'main'), `${'1'.repeat(40)}\n`);
+  assert.notEqual(presentationInputs(root, file), detached, 'a trunk move changes a detached board\'s fingerprint');
+  assert.deepEqual(trap.calls(), [], 'a detached primary reads its retained trunk without Git');
+});
+
+test('an ask that fails before reaching the publisher is not recorded, so the next sync asks again [C7]', (t) => {
+  const { root, file } = senderRepo(t);
+  const directory = dirname(file);
+  // A live holder keeps this case from starting a real publisher; the asked marker as a folder makes noting fail.
+  writeFileSync(join(directory, 'relay-checkpoint.pid'), `${process.pid}\n`);
+  mkdirSync(join(directory, 'relay-checkpoint.asked'));
+  assert.throws(() => requestCheckpointCheck(root, file, { now: 1_000 }));
+  rmSync(join(directory, 'relay-checkpoint.asked'), { recursive: true });
+  assert.equal(requestCheckpointCheck(root, file, { now: 2_000 }), true, 'the failed ask is retried on the next sync');
+  assert.equal(requestCheckpointCheck(root, file, { now: 3_000 }), false, 'a delivered ask still holds back an unchanged board');
 });

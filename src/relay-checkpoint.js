@@ -19,9 +19,9 @@ import {
 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.js';
-import { repoInfo } from './git.js';
+import { lastingRepoInfo } from './git.js';
 import { stateFileInputs } from './native-board-state.js';
-import { trunkRevisionReader } from './trunk-revision.js';
+import { fileTrunkRevision } from './trunk-revision.js';
 
 /** Set to 0 to publish the checkpoint inside the command, as before #1014; the test runner sets it, like the view. */
 export const CHECKPOINT_BACKGROUND_ENV = 'PULLBOARD_RELAY_CHECKPOINT_BACKGROUND';
@@ -110,8 +110,9 @@ export function scheduleCheckpoint(root, file) {
 
 /**
  * A cheap fingerprint of what the presentation is built from: the board database's and every state input file's
- * size and time, and this checkout's HEAD and trunk refs. It reads no file contents and never opens the board; null
- * when the board cannot be read this way, so the caller asks as if it changed.
+ * size and time, and this checkout's HEAD and trunk refs. It never opens the board, and once its repository lookup is
+ * warm it starts no Git process, since the machine's sender runs it on every sync; null when the board cannot be read
+ * this way, so the caller asks as if it changed.
  *
  * @param {string} root
  * @param {string} file - The relay link file.
@@ -119,15 +120,17 @@ export function scheduleCheckpoint(root, file) {
  */
 export function presentationInputs(root, file) {
   try {
-    const info = repoInfo(root);
+    const info = lastingRepoInfo(root);
     const board = join(dirname(file), 'board.sqlite');
-    const paths = [board, `${board}-wal`, join(info.commonDir, 'packed-refs'), ...stateFileInputs(root, loadConfig(root)).map(input => input.path)];
+    // The shared config holds a detached primary's retained trunk, which the file-only trunk read may leave unknown.
+    const paths = [board, `${board}-wal`, join(info.commonDir, 'packed-refs'), join(info.commonDir, 'config'),
+      ...stateFileInputs(root, loadConfig(root), info).map(input => input.path)];
     const stats = paths.map(path => { try { const { mtimeMs, size, ino } = statSync(path); return `${mtimeMs}:${size}:${ino}`; } catch { return '-'; } });
     const head = readFileSync(join(info.gitDir, 'HEAD'), 'utf8').trim();
     const ref = /^ref: (refs\/.+)$/u.exec(head)?.[1];
     let commit = null;
     if (ref) { try { commit = readFileSync(join(info.commonDir, ref), 'utf8').trim(); } catch { /* A packed ref: packed-refs carries it. */ } }
-    return JSON.stringify({ root, stats, head, commit, trunk: trunkRevisionReader(info)() });
+    return JSON.stringify({ root, stats, head, commit, trunk: fileTrunkRevision(info.commonDir) });
   } catch { return null; }
 }
 
@@ -153,9 +156,10 @@ export function requestCheckpointCheck(root, file, { pause = null, now = Date.no
     let last = null;
     try { last = JSON.parse(readFileSync(recorded, 'utf8')); } catch { /* No ask recorded yet. */ }
     if (last?.inputs === inputs && now >= last.at && now - last.at < CHECKPOINT_RECHECK_MS) return false;
-    writeFileSync(recorded, `${JSON.stringify({ at: now, inputs })}\n`, { mode: 0o600 });
   }
   notePublisher(root, file, 'asked');
+  // Recorded only once the publisher holds the ask, so a sync that fails before then is retried at once, not in minutes.
+  if (inputs !== null) writeFileSync(recorded, `${JSON.stringify({ at: now, inputs })}\n`, { mode: 0o600 });
   return true;
 }
 

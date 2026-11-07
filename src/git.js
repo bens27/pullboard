@@ -545,6 +545,17 @@ export function repoInfo(cwd, { env } = {}) {
 }
 
 /**
+ * The repo around `cwd`, from this command's facts or, outside any command, from the process-lifetime cache that the
+ * filesystem validates, so a long-lived poller such as the machine's relay sender runs Git once, not on every pass.
+ *
+ * @param {string} cwd
+ * @returns {{ root: string, commonDir: string, gitDir: string, isMain: boolean }}
+ */
+export function lastingRepoInfo(cwd) {
+  return gitFacts.getStore()?.active ? repoInfo(cwd) : withGitReadFacts(() => repoInfo(cwd));
+}
+
+/**
  * Read top level, worktree Git dir and shared Git dir in one process. With no inherited selector, the same process
  * also reads this checkout's HEAD commit and the primary checkout's branch and commit, and keeps them as this
  * command's headCommit, mainCheckout and effective hook-path facts, preserving Git's own configuration resolution.
@@ -647,22 +658,41 @@ function readCodeIsFromMain(root) {
  */
 export function localConfigIs(root, section, key, value) {
   if (!/^[\w./-]+$/u.test(value) || !plainRepositoryEnvironment()) return false;
-  let text;
-  try { text = readFileSync(join(repoInfo(root).commonDir, 'config'), 'utf8'); }
+  let commonDir;
+  try { commonDir = repoInfo(root).commonDir; }
   catch { return false; }
-  if (/^\s*\[\s*include/imu.test(text) || /\\\r?$/mu.test(text)) return false;
+  return plainLocalConfigValue(commonDir, section, key) === value;
+}
+
+/**
+ * The one plain `<section>.<key>` in the shared config file, read without Git: null when the file holds none, and
+ * undefined whenever it could mean anything less certain (an include, a continued line, a repeated key, an inherited
+ * selector), so the caller asks Git or treats the value as unknown.
+ *
+ * @param {string} commonDir
+ * @param {string} section
+ * @param {string} key
+ * @returns {string|null|undefined}
+ */
+export function plainLocalConfigValue(commonDir, section, key) {
+  if (!plainRepositoryEnvironment()) return undefined;
+  let text;
+  try { text = readFileSync(join(commonDir, 'config'), 'utf8'); }
+  catch { return undefined; }
+  if (/^\s*\[\s*include/imu.test(text) || /\\\r?$/mu.test(text)) return undefined;
   let inSection = false;
   const values = [];
   for (const line of text.split('\n')) {
     const header = /^\s*\[([^\]]*)\]\s*$/u.exec(line);
     if (header) inSection = header[1].trim().toLowerCase() === section;
-    else if (/^\s*\[/u.test(line)) return false;
+    else if (/^\s*\[/u.test(line)) return undefined;
     else {
       const entry = /^\s*([A-Za-z][A-Za-z0-9-]*)\s*(?:=\s*(.*?))?\s*$/u.exec(line);
       if (inSection && entry?.[1].toLowerCase() === key) values.push(entry[2]);
     }
   }
-  return values.length === 1 && values[0] === value;
+  if (values.length === 0) return null;
+  return values.length === 1 && /^[\w./-]+$/u.test(values[0] ?? '') ? values[0] : undefined;
 }
 
 /**
