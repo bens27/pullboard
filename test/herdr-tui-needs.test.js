@@ -443,3 +443,32 @@ test('confirm screens count every non-ASCII character as two cells, so no emoji 
     }
   }
 });
+
+/** Cells a line takes at most: a grapheme with any non-ASCII part draws in two cells, else one. */
+function graphemeCells(line) {
+  let sum = 0;
+  for (const { segment } of new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(line)) sum += /[^\x20-\x7e]/u.test(segment) ? 2 : 1;
+  return sum;
+}
+
+test('confirm screens keep keycaps and combining accents inside the width, whole [B26]', () => {
+  for (const text of ['1️⃣'.repeat(200), 'é'.repeat(200)]) {
+    const command = `echo '${text}'`;
+    const need = { id: 'ask:0123abcd', kind: 'ask', source: 'ask', title: 'Keycap', steps: [{ n: 1, label: 'Keycap', command, cwd: '/r', prompts: [], done: false }], next: 1 };
+    const start = loaded(initialState(), { root: '/r', needs: [need] });
+    for (const [confirm, first, rest] of [[keys(start, 'enter', 'enter').state, '  ', '    '], [keys(start, ' ', 'r').state, '  1. ', '     ']]) {
+      assert.ok(render(confirm, 40, 6).some((line) => line.startsWith(`${first}echo '`)));
+      const seen = [];
+      for (let down = 0; down < 120; down += 1) {
+        const screen = render(keys(confirm, ...Array(down).fill('down')).state, 40, 6);
+        for (const line of screen) assert.ok(graphemeCells(line) <= 40, `${graphemeCells(line)}: ${line}`);
+        seen.push(...screen.slice(0, 5));
+      }
+      const tall = render(confirm, 40, 600);
+      assert.equal(unwrap(tall, first, rest), command);
+      for (const line of tall.slice(0, -1)) assert.ok(seen.includes(line), line);
+      const body = tall.filter((line) => line.startsWith(rest) || line.startsWith(first));
+      assert.ok(body.every((line) => !/^\s*[️⃣́]/u.test(line.slice(rest.length))), 'a line starts mid-grapheme');
+    }
+  }
+});

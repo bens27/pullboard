@@ -183,29 +183,30 @@ function visible(text) {
   return String(text).replace(/[\x00-\x1f\x7f-\x9f]/gu, (char) => `\\x${char.codePointAt(0).toString(16).padStart(2, '0')}`);
 }
 
-// Terminal cells one code point may take, never fewer than drawn: width tables kept missing
-// cases (an emoji with a variation selector, ambiguous-width symbols) that spilled a line onto
-// extra rows and pushed a command's start off the confirm screen, so anything past printable
-// ASCII counts as two. Over-counting only makes a line shorter.
-function cellWidth(char) {
-  if (/^[\x20-\x7e]$/u.test(char)) return 1;
-  if (/[\p{Mn}\p{Me}\p{Cf}]/u.test(char)) return 0;
-  return 2;
-}
-
+// Cells a grapheme may take, never fewer than drawn: width tables and zero-width exceptions kept
+// missing cases (a heart or keycap with a variation selector) that spilled a line onto extra rows
+// and pushed a command's start off the confirm screen. A terminal advances at most two cells per
+// grapheme, so two for every non-ASCII code point can only over-count, which only shortens a line.
 function cells(text) {
   let sum = 0;
-  for (const char of text) sum += cellWidth(char);
+  for (const char of text) sum += /^[\x20-\x7e]$/u.test(char) ? 1 : 2;
   return sum;
+}
+
+const GRAPHEMES = new Intl.Segmenter('en', { granularity: 'grapheme' });
+
+// Whole graphemes, so a line never starts with an accent or selector cut from its base.
+function graphemes(text) {
+  return [...GRAPHEMES.segment(text)].map(({ segment }) => segment);
 }
 
 function cut(line, cols) {
   let out = '';
   let used = 0;
-  for (const char of visible(line)) {
-    used += cellWidth(char);
+  for (const part of graphemes(visible(line))) {
+    used += cells(part);
     if (used > cols) break;
-    out += char;
+    out += part;
   }
   return out;
 }
@@ -228,15 +229,15 @@ function hardWrap(text, first, rest, cols) {
   let line = '';
   let room = cols - cells(first);
   let used = 0;
-  for (const char of visible(text)) {
-    const width = cellWidth(char);
+  for (const part of graphemes(visible(text))) {
+    const width = cells(part);
     if (line && used + width > room) {
       lines.push((lines.length ? rest : first) + line);
       line = '';
       used = 0;
       room = cols - cells(rest);
     }
-    line += char;
+    line += part;
     used += width;
   }
   lines.push((lines.length ? rest : first) + line);
