@@ -4,7 +4,8 @@ import { Refused } from './refused.js';
 import { relayStorage } from './relay-storage.js';
 import { refusalDocument } from './json.js';
 import { withGitFacts } from './git.js';
-import { PAIR_PACKAGE_BODY_BYTES, RELAY_BODY_BYTES } from './relay-limits.js';
+import { PAIR_PACKAGE_BODY_BYTES } from './relay-limits.js';
+import { RELAY_BODY_BYTES } from './relay-limits.js';
 
 const BODY_BYTES = RELAY_BODY_BYTES;
 
