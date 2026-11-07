@@ -21,6 +21,7 @@ import {
   blockMoveKeys,
   blockOwner,
   recordBlock,
+  stoppedCommandKey,
 } from './blocks.js';
 import { repoInfo } from './git.js';
 
@@ -192,7 +193,7 @@ export function reportBlock(io, error, { command, info: given, now = io.clock?.n
     by: caller === 'person' ? 'person' : info.isMain ? 'coordinator' : 'agent' });
   if (!block) return null;
   const moveKey = blockMoveKey(io);
-  if (moveKey) Object.assign(block, { moveKey, moveKeys: blockMoveKeys(io), owner: blockOwner(block.audience, info) });
+  if (moveKey) Object.assign(block, { moveKey, moveKeys: blockMoveKeys(io), owner: blockOwner(block.audience, info), stopped: stoppedCommandKey(io) });
   try { recordBlock(info.commonDir, block); }
   catch (failure) { io.err(`pullboard: this block was not recorded (${failure.message}); the refusal above still stands`); }
   const line = blockLine(block);

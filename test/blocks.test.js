@@ -18,6 +18,7 @@ import {
   personBlockWords,
   readBlocks,
   recordBlock,
+  stoppedCommandKey,
 } from '../src/blocks.js';
 import { relayPresentation } from '../src/relay-presentation.js';
 import { createE2eHelpers } from './e2e-helpers.js';
@@ -154,6 +155,27 @@ test('a person block clears when its stopped runner completes the move, or relay
     'relay on reissues the coordinator token, clearing every expired-token block and nothing else');
 });
 
+test('a runner clears its person block only by completing the exact command it was stopped on [B26]', () => {
+  const box = e2e.project();
+  const info = repoInfo(box.repo);
+  const io = (cliOperation, positionals, values = {}) => ({ cwd: box.repo, personChannel: 'agent', err: () => {},
+    relayCommand: { cliOperation, positionals, values } });
+  const neverAgain = io('fact', ['1', 'root-cause', 'X'], { cause: 'refusal:MERGE_CONFLICT', 'never-again': true });
+  const refusal = new Refused('RIGOR_PERSON_ONLY', 'only the person marks a cause never-again, from the main checkout');
+  assert.equal(reportBlock(neverAgain, refusal, { command: 'fact' })?.audience, 'person');
+  clearCompletedBlocks(io('fact', ['1', 'root-cause', 'X']), new Date(Date.now() + 1000));
+  assert.equal(readBlocks(info.commonDir).length, 1, 'a plain root-cause fact never makes the never-again decision');
+  clearCompletedBlocks(io('fact', ['1', 'root-cause', 'X'], { cause: 'refusal:MERGE_CONFLICT' }), new Date(Date.now() + 2000));
+  assert.equal(readBlocks(info.commonDir).length, 1, 'the same cause without --never-again leaves the block');
+  clearCompletedBlocks(neverAgain, new Date(Date.now() + 3000));
+  assert.deepEqual(readBlocks(info.commonDir), [], 'the exact stopped command succeeding clears it');
+
+  const takeover = io('takeover', []);
+  assert.equal(reportBlock(takeover, new Refused('TOKEN_EXPIRED', 'the coordinator relay token expired'), { command: 'takeover' })?.audience, 'person');
+  clearCompletedBlocks(takeover, new Date(Date.now() + 4000));
+  assert.deepEqual(readBlocks(info.commonDir), [], 'the coordinator\'s later takeover clears its expired-token block');
+});
+
 /** Needs you as the local API serves it, read in full so every person call is present. */
 async function apiNeeds(api, root) {
   const headers = { 'x-pullboard-key': 'blocks-test' };
@@ -268,14 +290,17 @@ test('an ask block clears only when the same ask, step and verb completes; other
   const refused = io(['done', 'ask:3f9a0c12'], 'ask');
   recordBlock(info.commonDir, { at: '2026-11-07T20:00:00.000Z', code: 'ASK_PERSON_ONLY', command: 'pullboard ask', by: 'coordinator',
     path: box.repo, audience: 'person', reason: 'the ask is the person\'s alone', step: 'mark it done at the main checkout',
-    moveKey: blockMoveKey(refused), moveKeys: blockMoveKeys(refused), owner: 'person' });
+    moveKey: blockMoveKey(refused), moveKeys: blockMoveKeys(refused), owner: 'person', stopped: stoppedCommandKey(refused) });
   for (const [move, why] of [[io(['done', '7b1e4d20']), 'another ask'], [io(['drop', '3f9a0c12']), 'dropping it'],
     [io(['done', '3f9a0c12'], 'ask', { step: '2' }), 'another step'], [io(['File one'], 'ask'), 'filing an ask']]) {
     clearCompletedBlocks(move, new Date('2026-11-07T20:01:00.000Z'));
     assert.equal(readBlocks(info.commonDir).length, 1, `${why} leaves the ask's person block`);
   }
+  assert.equal(blockMoveKey(io(['done', '3f9a0c12'])), blockMoveKey(refused), 'an owner completes the same ask, ask: prefix or not');
   clearCompletedBlocks(io(['done', '3f9a0c12']), new Date('2026-11-07T20:02:00.000Z'));
-  assert.deepEqual(readBlocks(info.commonDir), [], 'the same ask done, ask: prefix or not, clears it');
+  assert.equal(readBlocks(info.commonDir).length, 1, 'the stopped runner clears it only with the command it was stopped on');
+  clearCompletedBlocks(refused, new Date('2026-11-07T20:03:00.000Z'));
+  assert.deepEqual(readBlocks(info.commonDir), [], 'the same ask done, spelled as stopped, clears it');
 
   const distinct = (a, b, why) => assert.notEqual(blockMoveKey(a), blockMoveKey(b), why);
   distinct(io(['sign', '3'], 'bar'), io(['sign', '4'], 'bar'), 'bar sign names its item');

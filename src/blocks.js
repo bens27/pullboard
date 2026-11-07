@@ -138,6 +138,26 @@ export function blockMoveKey(io) {
   return key({ command: name, verb, item: target });
 }
 
+/**
+ * The whole command a block stopped, hashed: its name, every word and every option. A runner's
+ * success clears its person block only when it ran exactly this, since a coarser move key would let
+ * a lesser command stand in for the decision that was refused [B26].
+ */
+export function stoppedCommandKey(io) {
+  const command = io.relayCommand;
+  if (!command?.cliOperation) return null;
+  const values = command.values ?? {};
+  return key({ stopped: command.cliOperation, words: (command.positionals ?? []).map(String),
+    values: Object.keys(values).sort().map(name => [name, values[name]]) });
+}
+
+/** Blocks recorded before the stopped command was hashed name only a bare command, which only that bare command repeats. */
+function stoppedBy(block, io) {
+  if (block.stopped) return block.stopped === stoppedCommandKey(io);
+  const command = io.relayCommand;
+  return !command?.positionals?.length && !Object.keys(command?.values ?? {}).length && block.command === `pullboard ${command?.cliOperation}`;
+}
+
 /** A multirow refusal completes only after every target has its own later successful move. */
 export function blockMoveKeys(io) {
   const command = io.relayCommand;
@@ -170,8 +190,8 @@ export function clearCompletedBlocks(io, now = io.clock?.now?.() ?? new Date()) 
   try { requirePersonChannel(io.personChannel); owners.add('person'); } catch { /* An agent's success cannot clear a person's block. */ }
   const caller = io.callerRole?.();
   const runner = caller === 'person' ? 'person' : info.isMain ? 'coordinator' : 'agent';
-  // A person block records whom it stopped; once that same checkout completes the move, nothing stops it any more.
-  const unstopped = block => block.by === runner && block.path === info.root;
+  // A person block records whom it stopped and what; once that checkout completes that exact command, nothing stops it any more.
+  const unstopped = block => block.by === runner && block.path === info.root && stoppedBy(block, io);
   // Relay on reissues the coordinator's token, so every block an expired token raised is moot.
   const reissued = owners.has('person') && io.relayCommand?.cliOperation === 'relay' && io.relayCommand.positionals?.[0] === 'on';
   try {
