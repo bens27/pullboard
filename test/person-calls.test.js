@@ -131,7 +131,7 @@ test('an open ask needs the person, with its steps and the command that records 
   const [need] = needs;
   assert.equal(need.from, 'builder one');
   assert.equal(need.what, 'pullboard relay join {code}', 'the next step keeps its placeholder as written');
-  assert.equal(need.done, 'pullboard ask done 3 --step 2');
+  assert.equal(need.done, 'pullboard ask done 3 --step 2 --as person');
 
   const html = renderNeedsRow(() => 'standard row', () => null, needsEntries(needs, [])[0]);
   assert.doesNotMatch(html, /<the>|<phone>|& "laptops"/u, 'agent-written text is escaped');
@@ -140,6 +140,6 @@ test('an open ask needs the person, with its steps and the command that records 
   assert.match(html, /builder one/u);
   assert.ok(html.indexOf('Sign in') < html.indexOf('Pair &lt;phone&gt;'), 'steps show in order');
   assert.match(html, /<code>pullboard relay join \{code\}<\/code>/u);
-  assert.match(html, /data-copy="pullboard ask done 3 --step 2"/u, 'the person copies the command that records the step');
+  assert.match(html, /data-copy="pullboard ask done 3 --step 2 --as person"/u, 'the person copies the command that records the step');
   assert.doesNotMatch(html, /data-run|data-act/u, 'the browser view never runs a step');
 });
