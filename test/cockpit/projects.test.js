@@ -493,6 +493,10 @@ test('the tab title says what needs you [N26]', async () => {
     accept(box, alpha, 2);
     box.run(beta.repo, 'hold', 'web', '--off');
     await page.run('refresh()');
+    assert.equal(title(), '(1) calm · Pullboard', "G2's one item is verified, so its sign-off is the person's [B26]");
+
+    box.run(alpha.repo, 'spec', 'signoff', 'G2', '--by', 'CO', '--note', 'read the farewell');
+    await page.run('refresh()');
     assert.equal(title(), 'calm · Pullboard', 'nothing needs the person, so no count');
 
     assert.equal((await openPage(nobody)).run('document.title'), 'Pullboard', 'with no project to show');
