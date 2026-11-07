@@ -19,7 +19,9 @@ export function shellQuote(value) {
  * the step declares as prompts are filled, so shell text such as `${HOME}` passes through. A step
  * with a declared placeholder is refused when it uses ", a backtick, \ or $(, since each can put
  * the answer back inside a shell parse, and << or a line break, since a here-document body expands
- * $( even inside ' quotes. With those gone single quotes cannot nest, so a
+ * $( even inside ' quotes, and #, since a comment can swallow the opening quote of an answer. An
+ * answer must be one line, so a line break in it can never start a command of its own. With those
+ * gone single quotes cannot nest, so a
  * placeholder between two ' is refused too: `'{note}'` answered `$(cmd)` would run cmd.
  *
  * @param {{ command: string, prompts?: { key: string, default?: string }[] }} step
@@ -39,15 +41,18 @@ export function fillCommand(step, values = {}) {
     if (hit && prompts.has(hit[1])) hits.push({ at, key: hit[1], length: hit[0].length, quoted });
   }
   if (!hits.length) return template;
-  const unsafe = /["`\\\n\r]|\$\(|<</u.test(template) ? hits[0] : hits.find((hit) => hit.quoted);
+  const unsafe = /["`\\\n\r#]|\$\(|<</u.test(template) ? hits[0] : hits.find((hit) => hit.quoted);
   if (unsafe) {
-    throw new Error(`placeholder {${unsafe.key}} cannot be filled safely: a step with one may not use ", \`, \\, $(, << or a line break, or quote it in: ${template}`);
+    throw new Error(`placeholder {${unsafe.key}} cannot be filled safely: a step with one may not use ", \`, \\, $(, <<, # or a line break, or quote it in: ${template}`);
+  }
+  const answers = new Map(hits.map(({ key }) => [key, Object.hasOwn(values, key) ? String(values[key]) : String(prompts.get(key).default ?? '')]));
+  for (const [key, value] of answers) {
+    if (/[\n\r\0]/u.test(value)) throw new Error(`answer for {${key}} must be one line: a line break or NUL in it would run as its own command`);
   }
   let out = '';
   let from = 0;
   for (const { at, key, length } of hits) {
-    const value = Object.hasOwn(values, key) ? values[key] : (prompts.get(key).default ?? '');
-    out += template.slice(from, at) + shellQuote(value);
+    out += template.slice(from, at) + shellQuote(answers.get(key));
     from = at + length;
   }
   return out + template.slice(from);

@@ -37,6 +37,7 @@ test('a declared placeholder near a quote, backslash or $( is refused, since the
     '"$(printf "%s" "{note}")"', '"$(echo " {note} ")"', '\\{note}', '$(echo {note})', 'echo `{note}`',
     "echo \\'{note} '{other}' \"${HOME}\"",
     'cat <<EOF\n{note}\nEOF', 'cat <<-EOF\r{note}', 'cat <<< {note}', 'echo {note}\necho done',
+    'echo ok # {note}', 'echo {note}#',
   ];
   for (const command of refused) assert.throws(() => fillCommand({ command, prompts }, attack), /cannot be filled safely/, command);
   assert.equal(fillCommand({ command: "echo {note} ${HOME} '{x'", prompts }, attack), "echo '$(touch /tmp/pwned)' ${HOME} '{x'");
@@ -159,6 +160,22 @@ test('the popup refuses a step whose placeholder it cannot fill safely and never
     assert.match(state.note, /cannot be filled safely/);
     assert.ok(render(state, 80, 40).some((line) => line.includes('cannot run safely')), command);
   }
+});
+
+test('an answer with a line break or NUL is refused before filling, and the popup shows why [B26]', () => {
+  const step = { command: 'echo ok {note}', prompts: [{ key: 'note' }] };
+  for (const note of ['\ntouch /tmp/x\n#', 'a\rb', 'a\0b']) {
+    assert.throws(() => fillCommand(step, { note }), /answer for \{note\} must be one line/u, JSON.stringify(note));
+  }
+  assert.throws(() => fillCommand({ command: 'echo {note}', prompts: [{ key: 'note', default: 'a\nb' }] }), /must be one line/u);
+  const shown = { n: 1, label: 'Note it', cwd: '/r', ...step, done: false };
+  const need = { id: 'ask:9c0ffee1', kind: 'ask', source: 'ask', title: 'Multiline', why: '', from: null, created: null, steps: [shown], next: 1 };
+  const start = loaded(initialState(), { root: '/r', needs: [need] });
+  const { state, effects } = keys(start, 'enter', 'enter', ...'a\ntouch /tmp/x', 'enter', 'y', 'enter');
+  assert.deepEqual(effects, []);
+  assert.equal(state.mode, 'note');
+  assert.match(state.note, /must be one line/u);
+  assert.ok(render(state, 80, 40).some((line) => line.includes('cannot run safely')));
 });
 
 test('the step view marks done, next and waiting steps; a note replaces the list [B26]', () => {
