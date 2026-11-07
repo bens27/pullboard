@@ -65,6 +65,7 @@ import { Refused } from './refused.js';
 import { refusalDocument } from './json.js';
 import { relayLinkAvailability } from './relay.js';
 import { personNeeds } from './needs.js';
+import { asks } from './asks.js';
 import {
   personVerifies,
   relayLinkedQuietly,
@@ -388,7 +389,7 @@ export function projectState(root, { seen = null, board: providedBoard = null, i
     const specRows = loadSpec(info.root, config).rows;
     const rigorRows = projectRowDecisions(store.rowDecisions(board), { root: info.root, spec: specRows, practice: doctrine.rows });
     const personCalls = { personVerifies: personVerifies(board, all, { linked: relayLinkedQuietly(info.root) }), signoffsDue: signoffsDue(info.root, specRows, all) };
-    const projected = projectSpecRevisions({ ...state, ...personCalls, rigorDrafts: rigorDraftNeeds(rigorRows, store.rowDrafts(board), store.rowDecisions(board)), sentinelDrafts: sentinelDraftNeeds(sentinels(board)) }, store.rowDrafts(board), store.rowDecisions(board));
+    const projected = projectSpecRevisions({ ...state, ...personCalls, rigorDrafts: rigorDraftNeeds(rigorRows, store.rowDrafts(board), store.rowDecisions(board)), sentinelDrafts: sentinelDraftNeeds(sentinels(board)), asks: asks(board).filter(ask => ask.status === 'open') }, store.rowDrafts(board), store.rowDecisions(board));
     return { ...projected, needs: personNeeds(projected) };
   }, providedBoard);
 }

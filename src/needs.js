@@ -26,6 +26,12 @@ export function personNeeds(state) {
   return [
     ...(state.decisions ?? []).map(ask => ({ kind: 'decision', id: ask.shout_id,
       ref: name(ask.shout_from), text: ask.shout_text, what: 'decision', at: ask.shout_at })),
+    // An agent's ask waits on the person's next step; the browser shows it, a Herdr panel runs it.
+    ...(state.asks ?? []).filter(ask => ask.status === 'open').map(ask => {
+      const next = ask.steps.find(step => !step.done);
+      return { kind: 'ask', id: `ask:${ask.id}`, ref: `ask #${ask.id}`, text: ask.title, why: ask.why, from: name(ask.from), at: ask.created,
+        steps: ask.steps, next: next?.n ?? null, what: next?.command ?? '', done: next ? `pullboard ask done ${ask.id} --step ${next.n}` : '' };
+    }),
     ...rows.filter(row => row.status === 'pending').map(row => ({ kind: 'pending', id: row.id,
       ref: row.id, text: row.text, what: `pullboard spec answer ${row.id} "<choice>"` })),
     ...(state.holds ?? []).map(hold => ({ kind: 'hold', id: hold.hold_lane,

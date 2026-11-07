@@ -5,6 +5,7 @@ import { after, test } from 'node:test';
 import * as store from '../src/board.js';
 import { recordAsk } from '../src/asks.js';
 import { needsList } from '../src/needs-steps.js';
+import { projectState } from '../src/serve.js';
 import { createE2eHelpers } from './e2e-helpers.js';
 
 const helpers = createE2eHelpers();
@@ -159,4 +160,13 @@ test('a step is marked done only when every step before it is [B26]', () => {
   assert.equal(code('--step', '3'), 'BAD_ASK', 'step 3 before step 2');
   assert.equal(code('--step', '2'), 'ok');
   assert.equal(code(), 'ok', 'no --step takes the next one');
+});
+
+test('the view state carries an open ask into Needs you until its last step is done [B26]', () => {
+  const box = helpers.project('true');
+  run(box, box.web, 'ask', 'Pair the phone', '--step', 'Pair::pullboard relay join {code}', '--json');
+  const asked = projectState(box.repo).needs.filter(need => need.kind === 'ask');
+  assert.deepEqual(asked.map(need => [need.id, need.what, need.done]), [['ask:1', 'pullboard relay join {code}', 'pullboard ask done 1 --step 1']]);
+  run(box, box.repo, 'ask', 'done', '1', '--step', '1');
+  assert.deepEqual(projectState(box.repo).needs.filter(need => need.kind === 'ask'), [], 'a finished ask leaves the view');
 });

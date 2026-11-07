@@ -1125,6 +1125,11 @@ $('local-note').addEventListener('click', async (event) => {
   if (!button || !button.dataset.copy) return;
   button.textContent = await copyWords(button.dataset.copy) ? 'Copied' : 'Select and copy';
 });
+// An ask's step is the person's to run in a terminal or a Herdr panel; the page only copies its command.
+for (const list of [$('needs'), $('home-needs')]) list.addEventListener('click', async (event) => {
+  const button = event.target instanceof Element ? event.target.closest('button[data-copy]') : null;
+  if (button?.dataset.copy) button.textContent = await copyWords(button.dataset.copy) ? 'Copied' : 'Select and copy';
+});
 /**
  * Look for this machine's view again, by itself, while a screen waits on it or a signed-in person waits for a board:
  * the moment the view answers, the page opens the board, with no Try again (#764). Over a relay stream, a reload

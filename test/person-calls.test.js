@@ -117,3 +117,29 @@ test('a row whose items are all verified waits for the person to sign it off [S5
     'status counts it too');
   assert.match(ran(box.repo, 'resume').out, /needs the person: G1: .*pullboard spec signoff G1/u);
 });
+
+test('an open ask needs the person, with its steps and the command that records each one [B26]', () => {
+  const builder = runInNewContext(`(${personNeeds.toString()})`);
+  const ask = (id, status, done) => ({ id, title: 'Link <the> relay', why: 'Phones & "laptops" need it', from: 'b1', created: '2026-11-07T09:00:00.000Z',
+    status, cwd: '/repo', personOnly: true, steps: [
+      { n: 1, label: 'Sign in', command: 'pullboard relay on --all', prompts: [], done },
+      { n: 2, label: 'Pair <phone>', command: 'pullboard relay join {code}', prompts: ['code'], done: false }] });
+  const state = { asks: [ask(3, 'open', true), ask(4, 'done', true), ask(5, 'dropped', false)],
+    agents: [{ agent_id: 'b1', displayName: 'builder one' }] };
+  const needs = JSON.parse(JSON.stringify(builder(state)));
+  assert.deepEqual(needs.map(need => [need.kind, need.id]), [['ask', 'ask:3']], 'a finished or dropped ask leaves the list');
+  const [need] = needs;
+  assert.equal(need.from, 'builder one');
+  assert.equal(need.what, 'pullboard relay join {code}', 'the next step keeps its placeholder as written');
+  assert.equal(need.done, 'pullboard ask done 3 --step 2');
+
+  const html = renderNeedsRow(() => 'standard row', () => null, needsEntries(needs, [])[0]);
+  assert.doesNotMatch(html, /<the>|<phone>|& "laptops"/u, 'agent-written text is escaped');
+  assert.match(html, /Link &lt;the&gt; relay/u);
+  assert.match(html, /Phones &amp; &quot;laptops&quot; need it/u);
+  assert.match(html, /builder one/u);
+  assert.ok(html.indexOf('Sign in') < html.indexOf('Pair &lt;phone&gt;'), 'steps show in order');
+  assert.match(html, /<code>pullboard relay join \{code\}<\/code>/u);
+  assert.match(html, /data-copy="pullboard ask done 3 --step 2"/u, 'the person copies the command that records the step');
+  assert.doesNotMatch(html, /data-run|data-act/u, 'the browser view never runs a step');
+});
