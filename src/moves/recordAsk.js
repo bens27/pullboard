@@ -13,7 +13,7 @@ export default Object.freeze({ operation: 'recordAsk', engine: ASK_ENGINE,
     BAD_ASK: 'file it as pullboard ask "<title>" --step "<label>::<command>"; see pullboard help ask',
     NO_ASK: 'list the open asks with pullboard needs',
     ASK_CLOSED: 'this ask is already finished or dropped; read pullboard needs for the open ones',
-    ASK_QUOTED_PLACEHOLDER: 'write each {key} as a bare word outside quotes, with no " ` \\ or $( in that step, e.g. --note {note}',
+    ASK_QUOTED_PLACEHOLDER: 'write each {key} as a bare word between spaces, with only letters, digits, spaces and _ . / : @ % + , = - around it in that step, e.g. pullboard relay join {code}',
     ASK_NOT_FILER: 'only the seat that filed the ask, the coordinator or the person closes it; shout the coordinator',
     ASK_PERSON_ONLY: 'the person marks it done in their own terminal at the main checkout: pullboard ask done <id> --as person',
   }) });

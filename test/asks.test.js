@@ -97,17 +97,19 @@ test('board needs map to their commands with prompts, decisions once, and spec a
   assert.equal(needs[6].steps[0].command, 'pullboard answer 20 {answer}');
 });
 
-test('a step with a placeholder may not quote, escape or substitute around it; ${x} is not a placeholder [B26]', () => {
+test('a step with a placeholder takes it as a bare word among plain characters only; a step without one is free [B26]', () => {
   const box = helpers.project('true');
   const refused = ["echo '{note}'", 'echo "a {note}"', 'echo "\\{note}"', 'echo "$(printf "%s" "{note}")"', 'echo "$(echo " {note} ")"',
-    'echo \\{note}', 'echo $(echo {note})', 'echo `echo {note}`', "echo it's {note}'"];
+    'echo \\{note}', 'echo $(echo {note})', 'echo `echo {note}`', "echo it's {note}'",
+    'print -r -- ${(eQ):-{note}}', 'echo ok # {note}', 'cat <<< {note}', '--x={note}'];
   for (const command of refused) {
     const result = box.run(box.web, 'ask', 'Quoted', '--step', `Say it::${command}`, '--json');
     assert.notEqual(result.code, 0, command);
     assert.equal(JSON.parse(result.out).error.code, 'ASK_QUOTED_PLACEHOLDER', command);
+    assert.ok(JSON.parse(result.out).error.message.endsWith(`in: ${command}`), command);
   }
-  const filed = run(box, box.web, 'ask', 'Bare', '--step', "Say it::echo {note} ${HOME} '{x' 'a b'", '--step', 'Plain::echo "no keys" $(date)', '--json').ask;
-  assert.deepEqual(filed.steps.map(step => step.prompts.map(prompt => prompt.key)), [['note'], []]);
+  const filed = run(box, box.web, 'ask', 'Bare', '--step', 'Join::pullboard relay join {code}', '--step', 'Plain::echo "no keys" ${HOME} $(date)', '--json').ask;
+  assert.deepEqual(filed.steps.map(step => step.prompts.map(prompt => prompt.key)), [['code'], []]);
 });
 
 test('an ask keeps the random id its command chose, and the move refuses a malformed or reused one [B26]', () => {

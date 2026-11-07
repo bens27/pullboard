@@ -17,6 +17,7 @@ const LINE = /[\r\n\0]/u;
 /** The id a command draws for each ask, so every replica names it the same however events interleave. */
 export const ASK_ID = /^[0-9a-f]{8}$/u;
 const PLACEHOLDER = /(?<!\$)\{([a-z][a-z0-9_-]{0,31})\}/gu;
+const BARE_STEP = /^[A-Za-z0-9 _./:@%+,=-]*$/u;
 
 /** Split one `--step "<label>::<command>"` value; the label is what the person reads on the button. */
 export function parseAskStep(value) {
@@ -33,23 +34,25 @@ export function stepPrompts(command) {
 }
 
 /**
- * The first `{key}` a panel could not fill safely, or null. A panel fills a key with a single-quoted answer, so a
- * step with any key may not use ", a backtick, \ or $(: each can put that answer back inside a shell parse. With
- * those gone, single quotes cannot nest, so toggling on each ' says exactly whether a key sits inside quotes.
+ * The first `{key}` a panel could not fill safely, or null. A panel fills a key with a single-quoted answer, and a
+ * denylist of shell syntax kept missing escapes (zsh's ${(eQ):-{key}} among them), so a step with any key is held
+ * to an allowlist: each key a whole word between spaces, and nothing else the shell could treat as syntax.
  */
 export function quotedPlaceholder(command) {
   const text = String(command);
   const keys = stepPrompts(text);
   if (!keys.length) return null;
-  if (/["`\\]|\$\(/u.test(text)) return keys[0].key;
-  let quoted = false;
-  for (let i = 0; i < text.length; i += 1) {
-    if (text[i] === "'") { quoted = !quoted; continue; }
-    if (!quoted || text[i] !== '{' || text[i - 1] === '$') continue;
-    const hit = /^\{([a-z][a-z0-9_-]{0,31})\}/u.exec(text.slice(i));
-    if (hit) return hit[1];
+  let rest = '';
+  let last = 0;
+  for (const match of text.matchAll(PLACEHOLDER)) {
+    const before = text[match.index - 1];
+    const after = text[match.index + match[0].length];
+    if ((before !== undefined && before !== ' ') || (after !== undefined && after !== ' ')) return match[1];
+    rest += text.slice(last, match.index);
+    last = match.index + match[0].length;
   }
-  return null;
+  rest += text.slice(last);
+  return BARE_STEP.test(rest) ? null : keys[0].key;
 }
 
 /** Refuse anything a panel could not show on one line or run in order. */
@@ -62,9 +65,9 @@ function askFiling(value) {
       || typeof value.cwd !== 'string' || !isAbsolute(value.cwd) || LINE.test(value.cwd)) {
     throw new Refused('BAD_ASK', 'file an ask with a one-line title, at least one --step "<label>::<command>" and an absolute --cwd');
   }
-  const quoted = steps.map(step => quotedPlaceholder(step.command)).find(Boolean);
-  if (quoted) {
-    throw new Refused('ASK_QUOTED_PLACEHOLDER', `a step with a {key} must not use " \` \\ or $( and must keep {key} outside quotes`);
+  const unsafe = steps.find(step => quotedPlaceholder(step.command));
+  if (unsafe) {
+    throw new Refused('ASK_QUOTED_PLACEHOLDER', `placeholder {${quotedPlaceholder(unsafe.command)}} cannot be filled safely: a step with a placeholder must use it as a bare word and only letters, digits, spaces and _ . / : @ % + , = - in: ${unsafe.command}`);
   }
   return { title: value.title.trim(), why: (value.why ?? '').trim(), cwd: value.cwd, personOnly: value.personOnly === true,
     steps: steps.map(step => ({ label: step.label.trim(), command: step.command.trim() })) };
