@@ -41,6 +41,47 @@ export function normalizedHealthFindings(findings) {
   });
 }
 
+/** The most findings one recorded scan keeps, so its move fits the relay's request body limit. */
+export const HEALTH_FINDINGS_KEPT = 200;
+/** Plaintext budget for kept findings; sealing and base64url grow it by a third, under the relay's 100000 bytes. */
+export const HEALTH_FINDINGS_BYTES = 48_000;
+
+/**
+ * Keep the findings a recorded scan can carry through the relay, in report order, and name the rest in one finding; CPU findings come first.
+ * Why: a raw scan of a board with hundreds of stuck items exceeds the relay body limit, and the relay's refusal
+ * is not transient, so the move would block every later move in the outbox. pullboard health still lists them all.
+ */
+export function compactHealthFindings(findings) {
+  if (!Array.isArray(findings)) return normalizedHealthFindings(findings);
+  const kept = [];
+  const omitted = [];
+  const seen = new Set();
+  let bytes = 2;
+  // CPU findings drive their own pending-notice queue, so a long stuck list never crowds them out.
+  const cpuFirst = findings.filter(finding => finding?.cause === 'AGENT_CPU').concat(findings.filter(finding => finding?.cause !== 'AGENT_CPU'));
+  for (const finding of cpuFirst) {
+    const [normal] = normalizedHealthFindings([finding]);
+    if (seen.has(normal.key)) {
+      throw new Refused('HEALTH_FINDINGS', 'a sentinel finding needs a unique key, cause, subject, time and next step; run pullboard health again');
+    }
+    seen.add(normal.key);
+    // Owner stays in the shape normalizedHealthFindings reads, so the kept list normalizes to the same identities.
+    const lean = { ...normal, owner: normal.owner === null ? null : { who: normal.owner } };
+    const size = Buffer.byteLength(JSON.stringify(lean)) + 1;
+    if (omitted.length || kept.length >= HEALTH_FINDINGS_KEPT || bytes + size > HEALTH_FINDINGS_BYTES) omitted.push(normal);
+    else {
+      kept.push(lean);
+      bytes += size;
+    }
+  }
+  if (!omitted.length) return kept;
+  const since = omitted.map(finding => finding.since).sort((a, b) => Date.parse(a) - Date.parse(b))[0];
+  return kept.concat([{ key: 'HEALTH_FINDINGS_OMITTED:board', cause: 'HEALTH_FINDINGS_OMITTED', item: null, subject: 'board',
+    title: `${findings.length} health findings, ${omitted.length} not recorded`, since,
+    why: `one recorded scan keeps at most ${HEALTH_FINDINGS_KEPT} findings so it fits the relay's request body limit`,
+    next: 'run pullboard health to list every finding', owner: null }]);
+}
+
 /** A new lease or owner is a new episode, even if no scan observed the intervening clear state. */
 export function healthFindingIdentity(finding) {
   return JSON.stringify([finding.key, finding.since, finding.owner]);

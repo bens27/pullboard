@@ -6,6 +6,7 @@ import { healthSentinelEnabled } from './settings.js';
 import { Refused } from './refused.js';
 import { agentCpuFindings } from './sentinel-cpu.js';
 import {
+  compactHealthFindings,
   healthFindingIdentity,
   normalizedHealthFindings,
 } from './health-receipts.js';
@@ -22,10 +23,12 @@ export function scanHealthSentinel(file, { root, config, now, cpu = agentCpuFind
     const processes = cpu(db);
     report.stuck.push(...(processes ?? (last ? JSON.parse(last.event_detail).active : []).filter(finding => finding.cause === 'AGENT_CPU').map(finding => ({ ...finding, owner: { who: finding.owner } }))));
     const before = (last ? JSON.parse(last.event_detail).active : []).map(healthFindingIdentity).sort();
-    const after = normalizedHealthFindings(report.stuck).map(healthFindingIdentity).sort();
+    // The recorded scan is the compact one, so compare against it or a board over the cap reposts every run.
+    const findings = compactHealthFindings(report.stuck);
+    const after = normalizedHealthFindings(findings).map(healthFindingIdentity).sort();
     db.exec('COMMIT');
     if (JSON.stringify(before) === JSON.stringify(after) && !(last && JSON.parse(last.event_detail).pendingCpu?.length)) return null;
-    return { observedRevision, findings: report.stuck };
+    return { observedRevision, findings };
   } finally { db.close(); }
 }
 
