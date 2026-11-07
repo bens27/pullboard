@@ -52,7 +52,12 @@ import { captureBoardChanges } from './board-capture.js';
 import { undoQueued } from './relay-outbox-undo.js';
 import { stampCoordinatorHolder } from './coordinator-hold.js';
 import { Refused } from './refused.js';
-import { refuseOversizedMove } from './relay-move-size.js';
+import {
+  RELAY_BODY_BYTES,
+  pendingBodyBytes,
+  refuseOversizedMove,
+} from './relay-move-size.js';
+import { compactHealthFindings } from './health-receipts.js';
 import {
   outboxFile,
   outboxSummaryFile,
@@ -667,6 +672,27 @@ async function rebuild(link, key, pulled) {
 }
 
 /**
+ * Shrink a queued health scan an older client made too large for the relay, keeping its id and observed revision.
+ * Why: the relay refuses an oversized body for good, so the scan would block every later move in the outbox.
+ */
+async function compactQueuedHealthMove(link, key, move) {
+  const { file, state } = link;
+  const where = outboxFile(file);
+  const findings = compactHealthFindings(move.args[0].findings);
+  await withOutboxGuard(file, async () => {
+    const outbox = await readOutbox(where, key, state.board);
+    const entry = outbox?.moves.find((queued) => queued.move.id === move.id);
+    if (!entry) return;
+    entry.move.args[0] = { ...entry.move.args[0], findings };
+    entry.intent = operationIntent(entry.move.operation, entry.move.args);
+    await writeOutbox(where, key, state.board, outbox);
+    saveOutboxSummary(link, outbox);
+    bumpGeneration(file);
+  });
+  move.args[0] = { ...move.args[0], findings };
+}
+
+/**
  * Send the queued moves the relay does not hold yet, in order, each at the next sequence (#1013). Network only: the
  * board is not touched; the next rebuild applies what the relay took. Stops at a move that names an item whose add
  * the relay has not numbered yet, and at another machine's move in the way. Returns how many went up.
@@ -681,8 +707,16 @@ async function sendQueued(link, key) {
     if (lost.length) break;
     if (localRecords(root, (board) => engineReceipt(board, move.id))) continue;
     const sequence = outbox.baseSequence + sent + 1;
-    const sealed = await sealedRecord(key, move, state, 'move', sequence);
-    const registration = seatReceipt(move, sequence, sealed);
+    let sealed = await sealedRecord(key, move, state, 'move', sequence);
+    let registration = seatReceipt(move, sequence, sealed);
+    if (pendingBodyBytes({ sequence, sealed, registration }) > RELAY_BODY_BYTES && move.operation === 'recordHealthFindings') {
+      await compactQueuedHealthMove(link, key, move);
+      sealed = await sealedRecord(key, move, state, 'move', sequence);
+      registration = seatReceipt(move, sequence, sealed);
+    }
+    if (pendingBodyBytes({ sequence, sealed, registration }) > RELAY_BODY_BYTES) {
+      throw new Refused('RELAY_MOVE_TOO_LARGE', `the queued move ${describeMove(move)} from ${entry.queuedAt} is over the relay's ${RELAY_BODY_BYTES}-byte body limit, so it stays queued and blocks the moves after it; ask your coordinator to report it before relinking`);
+    }
     const pending = { move, intent: entry.intent, ...(entry.command ? { command: entry.command, commandIntent: entry.commandIntent } : {}),
       sequence, sealed, ...(registration ? { registration } : {}) };
     try { await link.postPending(root, file, state, pending, io); }
