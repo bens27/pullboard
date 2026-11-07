@@ -100,6 +100,16 @@ test('a for-person move travels under the coordinator only while policy.personCh
   assert.equal(relaySenderProblem(move, coordinator, 'move', { board })?.code, 'RELAY_PERSON_ONLY');
 });
 
+test('an ask marked done as the person needs the person over the relay, as an answer does [B26]', () => {
+  const move = { engine: VERIFIER_STANDING_ENGINE, operation: 'recordAsk', args: [{ agentId: 'coordinator', action: 'done', id: 'abcdef01', asPerson: true, channel: 'terminal' }] };
+  const coordinator = { kind: 'agent', agent: 'coordinator', userId: '1', policy: VERIFIER_STANDING_ENGINE };
+  assert.equal(credentialActor(move), 'person');
+  assert.equal(relaySenderProblem(move, coordinator, 'move', { board })?.code, 'RELAY_PERSON_ONLY');
+  assert.equal(relaySenderProblem(move, { kind: 'person', userId: '1', approver: false, policy: VERIFIER_STANDING_ENGINE }, 'move', { board })?.code, 'NOT_APPROVER');
+  const own = { ...move, args: [{ ...move.args[0], asPerson: false }] };
+  assert.equal(relaySenderProblem(own, coordinator, 'move', { board }), null, 'the coordinator still marks its own step');
+});
+
 test('a for-person check acceptance names the coordinator and the person\'s words, and needs the policy off [B26]', () => {
   const id = store.addItem(board, { by: 'coordinator', lane: 'web', title: 'Held', check: 'true' });
   const digest = checkDigest(store.getItem(board, id).item_check);

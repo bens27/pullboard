@@ -33,6 +33,7 @@ test('every current operation selects its native actor credential without a seco
     if (operation === 'requestCompanion') args = [{ agentId: actor, parentId: 999999, lane: box.lane,
       key: 'credential-companion', title: 'credential actor fixture' }];
     if (operation === 'shout') args = [{ from: actor, to: 'all', text: 'credential actor fixture', lanes: [box.lane] }];
+    if (operation === 'recordAsk') args = [{ agentId: actor, action: 'file', id: 'c0ffee01', ask: { title: 'credential fixture', cwd: '/private/credential-ask', steps: [{ label: 'Go', command: 'true' }] } }];
     if (operation === 'release') args = [999999, actor];
     if (['claim', 'refreeze'].includes(operation)) args = [box.before.tables.item[0].item_id, options];
     if (operation === 'reserveNextReview') args = [options];
@@ -218,6 +219,7 @@ test('a person-only move is refused before the relay is asked [H2,H9,H16]', asyn
     ['recordLandingWaiver', [{ agentId: 'person', channel: 'terminal', reason: 'fixture' }]],
     ['recordRowDecisions', [{ agentId: 'person', channel: 'terminal', decisions: [] }]],
     ['answerDecision', [1, { agentId: 'person', asPerson: true, channel: 'terminal' }]],
+    ['recordAsk', [{ agentId: 'coordinator', action: 'done', id: 'abcdef01', asPerson: true, channel: 'terminal' }]],
     ['holdLane', [box.lane, { agentId: 'person', asPerson: true, channel: 'terminal', reason: 'fixture' }]],
     ['releaseLane', [box.lane, { agentId: 'person', asPerson: true, channel: 'terminal' }]],
     ['shout', [{ from: 'coordinator', to: 'all', text: 'person request fixture', lanes: [box.lane], request: true }]],
