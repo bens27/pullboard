@@ -1029,6 +1029,35 @@ test('a changed approved draft needs a new decision before apply [S1,I1,P6]', t 
   assert.doesNotMatch(applied.next, /spec apply|approve A1/u);
 });
 
+/**
+ * One stale decision blocks the whole batch: spec apply preflights every pending decision and refuses
+ * them all STALE_ROW_DECISION, so resume must name the stale row and never recommend apply [N19].
+ */
+test('a stale decision beside a valid one blocks apply in resume [S1,N19]', t => {
+  const box = specBox(t, { specSource: '# Spec\n\n## A · Setup\n- A1 [draft, must] Every page works at phone width. | gate: review\n- A2 [draft, must] Every page loads offline. | gate: review\n' });
+  assert.equal(box.run('approve', 'A1').status, 0);
+  assert.equal(box.run('approve', 'A2').status, 0);
+  const path = join(box.root, box.specName);
+  writeFileSync(path, readFileSync(path, 'utf8').replace('loads offline', 'loads on a slow network'));
+  const refused = box.run('apply');
+  assert.equal(refused.status, 1, refused.stdout + refused.stderr);
+  assert.match(refused.stderr, /STALE_ROW_DECISION/u, 'apply refuses the whole batch, the valid A1 included');
+  for (const args of [['resume', '--diagnostics', '--json'], ['resume', '--json']]) {
+    const read = runIn(box, box.root, args);
+    assert.equal(read.status, 0, read.stderr + read.stdout);
+    const card = JSON.parse(read.stdout);
+    assert.doesNotMatch(card.next, /spec apply/u, `${args.join(' ')}: applying a batch with a stale decision would loop: ${card.next}`);
+    assert.match(card.next, /A2/u, card.next);
+    assert.ok(card.next.includes("ask the person to approve A2's current row again"), card.next);
+    assert.deepEqual(card.pendingApply, [], 'no decision is named as applicable while the batch is blocked');
+    assert.deepEqual(card.staleApply?.map(({ kind, id }) => `${kind}:${id}`), ['spec:A2'], JSON.stringify(card.staleApply ?? null));
+  }
+  const text = runIn(box, box.root, ['resume']);
+  assert.equal(text.status, 0, text.stderr + text.stdout);
+  assert.match(text.stdout, /A2's .*changed after the person's decision/u, text.stdout);
+  assert.doesNotMatch(text.stdout, /^next: .*spec apply/mu, text.stdout);
+});
+
 test('a spec answer refused in an agent shell gives the person the exact command to paste [S1,B26]', async (t) => {
   for (const separateGitDir of [false, true]) await t.test(separateGitDir ? 'Git metadata in a separate folder' : 'a plain repository', (t) => answerCommandCase(t, separateGitDir));
   assert.throws(() => requireRelayOnChannel('terminal', { CLAUDECODE: '1' }), (error) => error.code === 'B26_PERSON_CHANNEL' && /run pullboard view/u.test(error.message),

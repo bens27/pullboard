@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import { AGENT_SHELL_MARKERS, SSH_SHELL_MARKERS } from '../src/person.js';
 import { RESUME_HOOK } from '../src/init.js';
 import { proofStats } from '../src/stats.js';
+import { applyFirst, pendingRowApply } from '../src/resume.js';
 import { runFixtureChild, runFixtureGit } from './fixture-child.js';
 import { takeDefaultViewPort } from './view-port-fixture.js';
 
@@ -112,6 +113,35 @@ test('resume names row decisions awaiting spec apply [N19]', t => {
   assert.deepEqual(after.card.pendingApply, [], 'an applied decision is no longer pending');
   assert.equal(after.lines.some((line) => line.startsWith(APPLY_LINE)), false, after.lines.join('\n'));
   assert.doesNotMatch(after.card.next, /^apply the person's recorded row decisions first/u);
+});
+
+/**
+ * Prove a recorded row decision goes ahead of any other next step, and only a step that already is
+ * the apply is left alone [N19]. The end-to-end case above reaches apply as its own next step.
+ */
+test('resume puts the row apply ahead of another next step [N19]', () => {
+  const pending = pendingRowApply([
+    { id: 'G1', kind: 'spec', decision: 'approve', applied: false },
+    { id: 'G2', kind: 'spec', decision: 'decline', applied: false },
+    { id: 'G3', kind: 'spec', decision: 'approve', applied: true },
+  ]);
+  assert.deepEqual(pending, [{ id: 'G1', kind: 'spec', decision: 'approve' }, { id: 'G2', kind: 'spec', decision: 'decline' }]);
+  assert.equal(applyFirst(pending, '/repo', 'pullboard land (checks current verdicts before merging)'),
+    "apply the person's recorded row decisions first: cd /repo && pullboard spec apply (G1 approved, G2 declined); then pullboard land (checks current verdicts before merging)");
+  assert.equal(applyFirst(pending, '/repo', 'pullboard spec apply, then commit SPEC.md'), 'pullboard spec apply, then commit SPEC.md', 'the apply is not doubled');
+  assert.equal(applyFirst([], '/repo', 'pullboard next'), 'pullboard next', 'nothing pending leaves the step alone');
+});
+
+/**
+ * One stale decision blocks spec apply for the whole batch, so resume names none as applicable [N19].
+ */
+test('a stale decision leaves no row decision to apply [N19]', () => {
+  const records = [
+    { id: 'G1', kind: 'spec', decision: 'approve', applied: false },
+    { id: 'G2', kind: 'spec', decision: 'approve', applied: false },
+  ];
+  assert.deepEqual(pendingRowApply(records, [{ id: 'G2', kind: 'spec' }]), [], 'apply would refuse G1 with G2');
+  assert.equal(pendingRowApply(records, []).length, 2);
 });
 
 /**
