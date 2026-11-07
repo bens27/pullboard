@@ -162,6 +162,8 @@ export function takenKeys(config, defaults) {
 export function planKeys(current, key, defaults = '') {
   if (!/^[\w+.-]+$/u.test(key)) throw new Error(`not a Herdr key binding: ${key}`);
   const rest = withoutBlock(current);
+  // A multiline string can hide a key behind a line continuation, so refuse rather than misread it.
+  if (/"""|'''/u.test(rest)) throw new Error('config.toml has multiline TOML strings, which cannot be checked for key clashes; bind the key by hand or remove them');
   const clashes = (taken) => taken.has(normalize(key)) || taken.has(UNDECODABLE);
   if (clashes(takenKeys(rest, defaults)) || clashes(quotedStrings(rest))) throw new Error(`${key} is already bound; choose another with --key`);
   const block = [BEGIN, '[[keys.command]]', `key = "${key}"`, 'type = "plugin_action"', `command = "${PLUGIN_ID}.open"`, 'description = "Pullboard: needs you"', END].join('\n');

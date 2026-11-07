@@ -254,3 +254,19 @@ test('a TOML basic string is compared after its escapes are decoded; an unknown 
   const kept = literal.run();
   assert.equal(kept.status, 0, kept.err);
 });
+
+test('a config with a multiline TOML string is refused, since its keys cannot be checked [B26]', (t) => {
+  const configs = [
+    '[[keys.command]]\nkey = """prefix\\\n+y"""\ntype = "shell"\ncommand = "echo existing"\n',
+    "[[keys.command]]\nkey = '''prefix+y'''\n",
+  ];
+  for (const config of configs) {
+    const { cfg, installed, run } = home(t, { config });
+    const before = snapshot(cfg);
+    const refused = run();
+    assert.equal(refused.status, 1, config);
+    assert.match(refused.err, /multiline TOML strings/, config);
+    assert.deepEqual(snapshot(cfg), before);
+    assert.equal(existsSync(installed), false);
+  }
+});
