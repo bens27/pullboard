@@ -2,3 +2,5 @@ node_modules/
 .DS_Store
 *.log
 .claude/worktrees/
+integrations/herdr-app/mods/*/gpui-kit.d.ts
+integrations/herdr-app/mods/*/jsconfig.json
