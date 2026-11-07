@@ -12,8 +12,12 @@ import {
 } from '../src/next-steps.js';
 import { Refused } from '../src/refused.js';
 import {
+  blockMoveKey,
+  blockMoveKeys,
+  clearCompletedBlocks,
   personBlockWords,
   readBlocks,
+  recordBlock,
 } from '../src/blocks.js';
 import { relayPresentation } from '../src/relay-presentation.js';
 import { createE2eHelpers } from './e2e-helpers.js';
@@ -121,6 +125,33 @@ test('a successful edit clears only its own item [C6]', () => {
   const completed = box.run(box.repo, 'edit', `#${second}`, '--brief', 'Second updated');
   assert.equal(completed.code, 0, completed.err);
   assert.deepEqual(readBlocks(info.commonDir), [], 'the same item clears across its accepted #id spelling');
+});
+
+test('a person block clears when its stopped runner completes the move, or relay on reissues the token [B26]', () => {
+  const box = e2e.project();
+  const info = repoInfo(box.repo);
+  const io = (positionals, cliOperation, personChannel) => ({ cwd: box.repo, personChannel, err: () => {},
+    relayCommand: { cliOperation, positionals, values: {} } });
+  const takeover = io([], 'takeover', 'agent');
+  const block = (at, code = 'TOKEN_EXPIRED', by = 'coordinator', move = takeover) => recordBlock(info.commonDir, {
+    at, code, command: `pullboard ${move.relayCommand.cliOperation}`, by, path: box.repo, audience: 'person',
+    reason: 'your sign-in for the coordinator expired', step: 'run pullboard relay on in the main checkout',
+    moveKey: blockMoveKey(move), moveKeys: blockMoveKeys(move), owner: 'person', id: `${code}-${at}` });
+  block('2026-11-07T19:54:06.755Z');
+  // The coordinator's own takeover succeeding means nothing stops it any more.
+  clearCompletedBlocks(takeover, new Date('2026-11-07T20:00:00.000Z'));
+  assert.deepEqual(readBlocks(info.commonDir), [], 'the stopped runner\'s later success clears its person block');
+
+  block('2026-11-07T20:01:00.000Z', 'HUMAN_REQUIRED', 'agent');
+  clearCompletedBlocks(takeover, new Date('2026-11-07T20:02:00.000Z'));
+  assert.equal(readBlocks(info.commonDir).length, 1, 'a success by a different runner leaves another runner\'s person block');
+
+  block('2026-11-07T20:03:00.000Z', 'TOKEN_EXPIRED', 'coordinator', io(['3'], 'claim', 'agent'));
+  clearCompletedBlocks(io(['off'], 'relay', 'view'), new Date('2026-11-07T20:04:00.000Z'));
+  assert.equal(readBlocks(info.commonDir).length, 2, 'relay off reissues nothing');
+  clearCompletedBlocks(io(['on'], 'relay', 'view'), new Date('2026-11-07T20:05:00.000Z'));
+  assert.deepEqual(readBlocks(info.commonDir).map(row => row.code), ['HUMAN_REQUIRED'],
+    'relay on reissues the coordinator token, clearing every expired-token block and nothing else');
 });
 
 /** Needs you as the local API serves it, read in full so every person call is present. */

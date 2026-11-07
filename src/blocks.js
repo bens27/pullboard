@@ -150,11 +150,21 @@ export function clearCompletedBlocks(io, now = io.clock?.now?.() ?? new Date()) 
   const owners = new Set([blockOwner('agent', info)]);
   if (info.isMain) owners.add('coordinator');
   try { requirePersonChannel(io.personChannel); owners.add('person'); } catch { /* An agent's success cannot clear a person's block. */ }
+  const caller = io.callerRole?.();
+  const runner = caller === 'person' ? 'person' : info.isMain ? 'coordinator' : 'agent';
+  // A person block records whom it stopped; once that same checkout completes the move, nothing stops it any more.
+  const unstopped = block => block.by === runner && block.path === info.root;
+  // Relay on reissues the coordinator's token, so every block an expired token raised is moot.
+  const reissued = owners.has('person') && io.relayCommand?.cliOperation === 'relay' && io.relayCommand.positionals?.[0] === 'on';
   try {
-    const ids = readBlocks(info.commonDir).filter(block => block.id && (block.moveKeys ?? [block.moveKey]).some(move => moveKeys.includes(move))
-      && owners.has(block.owner) && Date.parse(block.at) <= now.getTime()).map(block => block.id);
-    if (!ids.length) return;
-    appendFileSync(join(info.commonDir, BLOCKS_FILE), JSON.stringify({ kind: 'clear', at: now.toISOString(), ids, moveKeys }) + '\n');
+    const expired = block => reissued && block.code === 'TOKEN_EXPIRED' && block.owner === 'person';
+    const cleared = readBlocks(info.commonDir).filter(block => block.id && Date.parse(block.at) <= now.getTime()
+      && (expired(block) || (block.moveKeys ?? [block.moveKey]).some(move => moveKeys.includes(move)) && (owners.has(block.owner) || unstopped(block))));
+    if (!cleared.length) return;
+    const ids = cleared.map(block => block.id);
+    // An expired-token block clears whole, so the clear names every move it was waiting on.
+    const keys = [...new Set([...moveKeys, ...cleared.filter(expired).flatMap(block => block.moveKeys ?? [block.moveKey])])];
+    appendFileSync(join(info.commonDir, BLOCKS_FILE), JSON.stringify({ kind: 'clear', at: now.toISOString(), ids, moveKeys: keys }) + '\n');
   } catch (error) { io.err(`pullboard: the move completed, but its earlier block could not be cleared (${error.message})`); }
 }
 
