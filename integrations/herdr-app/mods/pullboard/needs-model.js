@@ -66,7 +66,8 @@ export function runnableStep(need, n) {
  * Fill a step's command: each `{key}` a prompt declares becomes that answer, shell-quoted, and a
  * missing answer takes the prompt's default. Braces no prompt declares stay as written, since a
  * command may carry its own (an awk program, say). A step with a declared placeholder is refused
- * when it uses ", a backtick, \ or $(, since each can put the answer back inside a shell parse;
+ * when it uses ", a backtick, \ or $(, since each can put the answer back inside a shell parse,
+ * and when it uses << or a line break, since a here-document body expands $( even inside ' quotes;
  * with those gone single quotes cannot nest, so a placeholder between two ' is refused too.
  *
  * @param {{ command: string, prompts?: { key: string, default?: string }[] }} step
@@ -86,9 +87,9 @@ export function fillCommand(step, values = {}) {
     if (hit && prompts.has(hit[1])) hits.push({ at: i, key: hit[1], len: hit[0].length, quoted });
   }
   if (!hits.length) return template;
-  const unsafe = /["`\\]|\$\(/.test(template) ? hits[0] : hits.find((h) => h.quoted);
+  const unsafe = /["`\\\n\r]|\$\(|<</.test(template) ? hits[0] : hits.find((h) => h.quoted);
   if (unsafe) {
-    throw new Error(`placeholder {${unsafe.key}} cannot be filled safely: a step with one may not use ", \`, \\ or $(, or quote it in: ${template}`);
+    throw new Error(`placeholder {${unsafe.key}} cannot be filled safely: a step with one may not use ", \`, \\, $(, << or a line break, or quote it in: ${template}`);
   }
   let out = '';
   let from = 0;
