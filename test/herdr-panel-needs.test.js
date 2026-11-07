@@ -42,21 +42,28 @@ test('placeholders fill from answers, then defaults; undeclared braces stay [B26
   assert.equal(shellSees('printf "%s|" ' + fillCommand({ command: '{a} {a}', prompts: [{ key: 'a' }] }, { a: 'x y' })), 'x y|x y|');
 });
 
-test('a declared placeholder inside quotes is refused, not filled [B26]', () => {
+test('a declared placeholder near a quote, backslash or $( is refused, not filled [B26]', () => {
   const evil = '$(printf INJECTED)';
-  for (const command of ["printf '%s' '{note}'", 'printf "%s" "{note}"', "echo \"a {note}\""]) {
-    assert.throws(() => fillCommand({ command, prompts: [{ key: 'note' }] }, { note: evil }), /inside quotes/);
+  const refused = [
+    "printf '%s' '{note}'", 'printf "%s" "{note}"', 'echo "a {note}"', 'echo "\\{note}"',
+    '"$(printf "%s" "{note}")"', '"$(echo " {note} ")"', '\\{note}', '$(echo {note})', 'echo `{note}`',
+    "echo \\'{note}",
+  ];
+  for (const command of refused) {
+    assert.throws(() => fillCommand({ command, prompts: [{ key: 'note' }] }, { note: evil }), /cannot be filled safely/, command);
   }
   assert.equal(shellSees(fillCommand({ command: "printf '%s' {note}", prompts: [{ key: 'note' }] }, { note: evil })), evil);
-  assert.equal(fillCommand({ command: "echo \\'{note}", prompts: [{ key: 'note' }] }, { note: 'x' }), "echo \\''x'");
-  const need = { id: 'ask:1', next: 1, steps: [{ n: 1, cwd: '/tmp', command: "echo '{note}'", prompts: [{ key: 'note' }] }] };
-  assert.match(planRun({ need, n: 1, values: { note: 'x' }, spaces: [] }).refused, /inside quotes/);
+  const bare = { command: "echo {note} ${HOME} '{x'", prompts: [{ key: 'note' }] };
+  assert.equal(fillCommand(bare, { note: 'a b' }), "echo 'a b' ${HOME} '{x'");
+  assert.equal(fillCommand({ command: 'echo "$(date)" {other}', prompts: [{ key: 'note' }] }), 'echo "$(date)" {other}');
+  const need = { id: 'ask:3f9a0c12', next: 1, steps: [{ n: 1, cwd: '/tmp', command: "echo '{note}'", prompts: [{ key: 'note' }] }] };
+  assert.match(planRun({ need, n: 1, values: { note: 'x' }, spaces: [] }).refused, /cannot be filled safely/);
 });
 
 test('the fixture reads as needs; a pullboard without the command is missing, not an error [B26]', () => {
   const read = readNeeds(ok(FIXTURE));
   assert.equal(read.state, 'ok');
-  assert.deepEqual(read.needs.map((n) => n.id), ['signoff:G9', 'ask:3']);
+  assert.deepEqual(read.needs.map((n) => n.id), ['signoff:G9', 'ask:3f9a0c12']);
   const missing = { version: 1, error: { code: 'USAGE', message: 'pullboard: no command "needs"; closest match is "next".' } };
   assert.deepEqual(readNeeds({ code: 2, stdout: JSON.stringify(missing), stderr: '' }), { state: 'missing' });
   assert.equal(readNeeds({ code: 1, stdout: '', stderr: 'boom\nmore' }).message, 'needs: exit 1: boom');
@@ -91,14 +98,14 @@ test('a confirmed ask step marks itself done only when its command exits 0 [B26]
     writeFileSync(join(dir, 'pullboard'), `#!/bin/sh\necho "$PWD $*" >> '${log}'\n`);
     chmodSync(join(dir, 'pullboard'), 0o755);
     // The tab's closing interactive shell is left out so the script ends in the test.
-    const run = (command) => spawnSync('/bin/zsh', ['-fc', stepScript({ command, askId: '3', step: 2, root: dir }).replace(/\nexec .*$/, '')],
+    const run = (command) => spawnSync('/bin/zsh', ['-fc', stepScript({ command, askId: '3f9a0c12', step: 2, root: dir }).replace(/\nexec .*$/, '')],
       { encoding: 'utf8', env: { PATH: `${dir}:/usr/bin:/bin` } });
     const failed = run('exit 4');
     assert.match(failed.stdout, /\[exit 4\]/);
     assert.throws(() => readFileSync(log, 'utf8'));
     const passed = run('echo hi');
     assert.match(passed.stdout, /hi\n\n\[exit 0\]/);
-    assert.equal(readFileSync(log, 'utf8'), `${dir} ask done 3 --step 2\n`);
+    assert.equal(readFileSync(log, 'utf8'), `${dir} ask done 3f9a0c12 --step 2 --as person\n`);
     assert.doesNotMatch(stepScript({ command: 'true', askId: null, step: 1 }), /ask done/);
     assert.match(stepScript({ command: 'true', step: 1 }), /\nexec \/bin\/zsh -l$/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -107,11 +114,11 @@ test('a confirmed ask step marks itself done only when its command exits 0 [B26]
 test('a confirmed run fills the next step and names its ask [B26]', () => {
   const [signoff, ask] = readNeeds(ok(FIXTURE)).needs;
   assert.equal(askId(signoff), null);
-  assert.equal(askId(ask), '3');
+  assert.equal(askId(ask), '3f9a0c12');
   const plan = planRun({ need: ask, n: 2, values: { device: "Ben's phone" }, root: '/r', spaces: [] });
   assert.equal(plan.command, "pullboard relay on --all --name 'Ben'\\''s phone'");
   assert.equal(plan.launch.command, 'space.new');
   assert.equal(plan.launch.args.folder, '/tmp/pullboard-needs-fixture');
-  assert.match(plan.launch.args.argv[2], /cd '\/r' && pullboard ask done '3' --step 2/);
+  assert.match(plan.launch.args.argv[2], /cd '\/r' && pullboard ask done '3f9a0c12' --step 2 --as person/);
   assert.match(planRun({ need: { ...signoff, steps: [{ ...signoff.steps[0], cwd: '' }] }, n: 1, values: {}, spaces: [] }).refused, /no folder/);
 });

@@ -19,7 +19,9 @@ it says Unknown instead of its calm text; the panel never shows a failed read as
   **Run in new tab…**. It opens an input for each prompt and a preview of the filled
   command, then **Confirm: run in new tab** opens a tab in the "Needs you" space (made on
   first use), runs the command in the step's folder and leaves the shell open. When an
-  ask's step exits 0, the tab runs `pullboard ask done <n> --step <k>` itself. A pullboard
+  ask's step exits 0, the tab runs `pullboard ask done <id> --step <k> --as person` itself.
+  A step whose prompt sits inside '...', or that uses `"`, a backtick, `\` or `$(`, is
+  refused with the reason instead of filled. A pullboard
   without the `needs` command shows one quiet line instead.
 
 - **Needs attention**: halted work that `pullboard health` gives no reason for, flagged,

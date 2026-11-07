@@ -65,8 +65,9 @@ export function runnableStep(need, n) {
 /**
  * Fill a step's command: each `{key}` a prompt declares becomes that answer, shell-quoted, and a
  * missing answer takes the prompt's default. Braces no prompt declares stay as written, since a
- * command may carry its own (an awk program, say). A declared placeholder inside quotes is refused:
- * there the single-quoted answer would close the template's quote and run as shell syntax.
+ * command may carry its own (an awk program, say). A step with a declared placeholder is refused
+ * when it uses ", a backtick, \ or $(, since each can put the answer back inside a shell parse;
+ * with those gone single quotes cannot nest, so a placeholder between two ' is refused too.
  *
  * @param {{ command: string, prompts?: { key: string, default?: string }[] }} step
  * @param {Record<string, string>} values
@@ -76,29 +77,31 @@ export function fillCommand(step, values = {}) {
   const prompts = new Map((step.prompts ?? []).map((p) => [p.key, p]));
   const template = String(step.command ?? '');
   const placeholder = /\{([A-Za-z_][\w-]*)\}/y;
-  let out = '';
-  let quote = '';
-  for (let i = 0; i < template.length;) {
-    const ch = template[i];
-    if (quote !== "'" && ch === '\\') { out += template.slice(i, i + 2); i += 2; continue; }
-    if (ch === "'" || ch === '"') {
-      if (!quote) quote = ch; else if (quote === ch) quote = '';
-      out += ch; i += 1; continue;
-    }
+  const hits = [];
+  let quoted = false;
+  for (let i = 0; i < template.length; i += 1) {
+    if (template[i] === "'") { quoted = !quoted; continue; }
     placeholder.lastIndex = i;
     const hit = template[i - 1] !== '$' ? placeholder.exec(template) : null;
-    if (hit && prompts.has(hit[1])) {
-      if (quote) throw new Error(`placeholder {${hit[1]}} sits inside quotes in: ${template}`);
-      const value = Object.hasOwn(values, hit[1]) ? values[hit[1]] : prompts.get(hit[1]).default ?? '';
-      out += shellQuote(value); i += hit[0].length; continue;
-    }
-    out += ch; i += 1;
+    if (hit && prompts.has(hit[1])) hits.push({ at: i, key: hit[1], len: hit[0].length, quoted });
   }
-  return out;
+  if (!hits.length) return template;
+  const unsafe = /["`\\]|\$\(/.test(template) ? hits[0] : hits.find((h) => h.quoted);
+  if (unsafe) {
+    throw new Error(`placeholder {${unsafe.key}} cannot be filled safely: a step with one may not use ", \`, \\ or $(, or quote it in: ${template}`);
+  }
+  let out = '';
+  let from = 0;
+  for (const { at, key, len } of hits) {
+    const value = Object.hasOwn(values, key) ? values[key] : prompts.get(key).default ?? '';
+    out += template.slice(from, at) + shellQuote(value);
+    from = at + len;
+  }
+  return out + template.slice(from);
 }
 
 /**
- * The ask number `pullboard ask done` takes, from an ask's need id (`ask:<n>`); null for a board
+ * The ask id `pullboard ask done` takes, from an ask's need id (`ask:<8 hex>`); null for a board
  * need, which clears itself when the board changes.
  *
  * @param {{ id: string, source?: string }} need
@@ -113,7 +116,8 @@ export function askId(need) {
 /**
  * The script a step's tab runs. The command runs in a subshell so an `exit` in it cannot close the
  * tab; the tab then prints the exit status and stays open as a login shell. For an ask, an exit 0
- * marks the step done from the board root, so the panel never has to watch the tab to learn it.
+ * marks the step done from the board root as the person, whose terminal this is, so the panel
+ * never has to watch the tab to learn it.
  *
  * @param {{ command: string, askId?: string|null, step?: number, root?: string|null }} run
  * @returns {string}
@@ -122,7 +126,7 @@ export function stepScript({ command, askId: ask = null, step, root = null }) {
   const lines = ['(', command, ')', 'pb_status=$?', 'echo', 'echo "[exit $pb_status]"'];
   if (ask != null) {
     const into = root ? `cd ${shellQuote(root)} && ` : '';
-    lines.push(`if [ "$pb_status" -eq 0 ]; then (${into}pullboard ask done ${shellQuote(ask)} --step ${Number(step)}); fi`);
+    lines.push(`if [ "$pb_status" -eq 0 ]; then (${into}pullboard ask done ${shellQuote(ask)} --step ${Number(step)} --as person); fi`);
   }
   lines.push('exec /bin/zsh -l');
   return lines.join('\n');
@@ -146,7 +150,7 @@ export function launchCommand(spaces, { name, cwd, script }) {
 
 /**
  * Everything one confirmed run needs: the filled command, the tab's command and its name, or why
- * it cannot run (a step that is not next, one with no folder, or a quoted placeholder).
+ * it cannot run (a step that is not next, one with no folder, or a placeholder it cannot fill safely).
  *
  * @param {{ need: any, n: number, values: Record<string, string>, root?: string|null, spaces: any[] }} input
  * @returns {{ command: string, launch: { command: string, args: Record<string, unknown> } } | { refused: string }}
