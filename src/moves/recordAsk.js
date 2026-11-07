@@ -13,6 +13,6 @@ export default Object.freeze({ operation: 'recordAsk', engine: ASK_ENGINE,
     BAD_ASK: 'file it as pullboard ask "<title>" --step "<label>::<command>"; see pullboard help ask',
     NO_ASK: 'list the open asks with pullboard needs',
     ASK_CLOSED: 'this ask is already finished or dropped; read pullboard needs for the open ones',
-    ASK_QUOTED_PLACEHOLDER: 'write each {key} as a bare word outside quotes, e.g. --note {note}',
+    ASK_QUOTED_PLACEHOLDER: 'write each {key} as a bare word outside quotes, with no " ` \\ or $( in that step, e.g. --note {note}',
     ASK_NOT_FILER: 'only the seat that filed the ask or the coordinator drops it; shout the coordinator',
   }) });

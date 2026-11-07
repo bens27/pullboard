@@ -31,17 +31,19 @@ export function stepPrompts(command) {
 }
 
 /**
- * The first `{key}` that sits inside '...' or "...", or null. Panels fill a key with a single-quoted
- * answer, which inside the template's own quotes would close them and run the answer as shell.
+ * The first `{key}` a panel could not fill safely, or null. A panel fills a key with a single-quoted answer, so a
+ * step with any key may not use ", a backtick, \ or $(: each can put that answer back inside a shell parse. With
+ * those gone, single quotes cannot nest, so toggling on each ' says exactly whether a key sits inside quotes.
  */
 export function quotedPlaceholder(command) {
   const text = String(command);
-  let quote = '';
+  const keys = stepPrompts(text);
+  if (!keys.length) return null;
+  if (/["`\\]|\$\(/u.test(text)) return keys[0].key;
+  let quoted = false;
   for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i];
-    if (quote !== "'" && ch === '\\') { i += 1; continue; }
-    if (ch === "'" || ch === '"') { quote = !quote ? ch : quote === ch ? '' : quote; continue; }
-    if (!quote || ch !== '{' || text[i - 1] === '$') continue;
+    if (text[i] === "'") { quoted = !quoted; continue; }
+    if (!quoted || text[i] !== '{' || text[i - 1] === '$') continue;
     const hit = /^\{([a-z][a-z0-9_-]{0,31})\}/u.exec(text.slice(i));
     if (hit) return hit[1];
   }
@@ -60,7 +62,7 @@ function askFiling(value) {
   }
   const quoted = steps.map(step => quotedPlaceholder(step.command)).find(Boolean);
   if (quoted) {
-    throw new Refused('ASK_QUOTED_PLACEHOLDER', `{${quoted}} sits inside quotes; write it as a bare word, since a panel quotes the answer itself`);
+    throw new Refused('ASK_QUOTED_PLACEHOLDER', `a step with a {key} must not use " \` \\ or $( and must keep {key} outside quotes`);
   }
   return { title: value.title.trim(), why: (value.why ?? '').trim(), cwd: value.cwd, personOnly: value.personOnly === true,
     steps: steps.map(step => ({ label: step.label.trim(), command: step.command.trim() })) };
