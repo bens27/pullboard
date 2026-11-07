@@ -49,6 +49,7 @@ test('a declared placeholder near a quote, backslash or $( is refused, not fille
     '"$(printf "%s" "{note}")"', '"$(echo " {note} ")"', '\\{note}', '$(echo {note})', 'echo `{note}`',
     "echo \\'{note}",
     'cat <<EOF\n{note}\nEOF', 'cat <<-EOF\r{note}', 'cat <<< {note}', 'echo {note}\necho done',
+    'echo ok # {note}', 'echo {note}#',
   ];
   for (const command of refused) {
     assert.throws(() => fillCommand({ command, prompts: [{ key: 'note' }] }, { note: evil }), /cannot be filled safely/, command);
@@ -59,6 +60,16 @@ test('a declared placeholder near a quote, backslash or $( is refused, not fille
   assert.equal(fillCommand({ command: 'echo "$(date)" {other}', prompts: [{ key: 'note' }] }), 'echo "$(date)" {other}');
   const need = { id: 'ask:3f9a0c12', next: 1, steps: [{ n: 1, cwd: '/tmp', command: "echo '{note}'", prompts: [{ key: 'note' }] }] };
   assert.match(planRun({ need, n: 1, values: { note: 'x' }, spaces: [] }).refused, /cannot be filled safely/);
+});
+
+test('an answer with a line break or NUL is refused before filling, since prompts are one line [B26]', () => {
+  const step = { command: 'echo ok {note}', prompts: [{ key: 'note' }] };
+  for (const note of ['\ntouch /tmp/x\n#', 'a\rb', 'a\0b']) {
+    assert.throws(() => fillCommand(step, { note }), /answer for \{note\} must be one line/, JSON.stringify(note));
+  }
+  assert.throws(() => fillCommand({ command: 'echo {note}', prompts: [{ key: 'note', default: 'a\nb' }] }), /must be one line/);
+  const need = { id: 'ask:3f9a0c12', next: 1, steps: [{ n: 1, cwd: '/tmp', ...step }] };
+  assert.match(planRun({ need, n: 1, values: { note: '\ntouch /tmp/x\n#' }, spaces: [] }).refused, /must be one line/);
 });
 
 test('the fixture reads as needs; a pullboard without the command is missing, not an error [B26]', () => {

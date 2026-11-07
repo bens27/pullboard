@@ -68,6 +68,8 @@ export function runnableStep(need, n) {
  * command may carry its own (an awk program, say). A step with a declared placeholder is refused
  * when it uses ", a backtick, \ or $(, since each can put the answer back inside a shell parse,
  * and when it uses << or a line break, since a here-document body expands $( even inside ' quotes;
+ * and when it uses #, since a comment can swallow the opening quote of an answer. An answer must
+ * be one line, so a line break in it can never start a command of its own;
  * with those gone single quotes cannot nest, so a placeholder between two ' is refused too.
  *
  * @param {{ command: string, prompts?: { key: string, default?: string }[] }} step
@@ -87,15 +89,18 @@ export function fillCommand(step, values = {}) {
     if (hit && prompts.has(hit[1])) hits.push({ at: i, key: hit[1], len: hit[0].length, quoted });
   }
   if (!hits.length) return template;
-  const unsafe = /["`\\\n\r]|\$\(|<</.test(template) ? hits[0] : hits.find((h) => h.quoted);
+  const unsafe = /["`\\\n\r#]|\$\(|<</.test(template) ? hits[0] : hits.find((h) => h.quoted);
   if (unsafe) {
-    throw new Error(`placeholder {${unsafe.key}} cannot be filled safely: a step with one may not use ", \`, \\, $(, << or a line break, or quote it in: ${template}`);
+    throw new Error(`placeholder {${unsafe.key}} cannot be filled safely: a step with one may not use ", \`, \\, $(, <<, # or a line break, or quote it in: ${template}`);
+  }
+  const answers = new Map(hits.map(({ key }) => [key, Object.hasOwn(values, key) ? String(values[key]) : String(prompts.get(key).default ?? '')]));
+  for (const [key, value] of answers) {
+    if (/[\n\r\0]/.test(value)) throw new Error(`answer for {${key}} must be one line: a line break or NUL in it would run as its own command`);
   }
   let out = '';
   let from = 0;
   for (const { at, key, len } of hits) {
-    const value = Object.hasOwn(values, key) ? values[key] : prompts.get(key).default ?? '';
-    out += template.slice(from, at) + shellQuote(value);
+    out += template.slice(from, at) + shellQuote(answers.get(key));
     from = at + len;
   }
   return out + template.slice(from);
