@@ -164,9 +164,9 @@ test('a step is marked done only when every step before it is [B26]', () => {
 
 test('the view state carries an open ask into Needs you until its last step is done [B26]', () => {
   const box = helpers.project('true');
-  run(box, box.web, 'ask', 'Pair the phone', '--step', 'Pair::pullboard relay join {code}', '--json');
+  const { id } = run(box, box.web, 'ask', 'Pair the phone', '--step', 'Pair::pullboard relay join {code}', '--json').ask;
   const asked = projectState(box.repo).needs.filter(need => need.kind === 'ask');
-  assert.deepEqual(asked.map(need => [need.id, need.what, need.done]), [['ask:1', 'pullboard relay join {code}', 'pullboard ask done 1 --step 1']]);
-  run(box, box.repo, 'ask', 'done', '1', '--step', '1');
+  assert.deepEqual(asked.map(need => [need.id, need.what, need.done]), [[`ask:${id}`, 'pullboard relay join {code}', `pullboard ask done ${id} --step 1 --as person`]]);
+  run(box, box.repo, 'ask', 'done', id, '--step', '1', '--as', 'person');
   assert.deepEqual(projectState(box.repo).needs.filter(need => need.kind === 'ask'), [], 'a finished ask leaves the view');
 });

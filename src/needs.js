@@ -30,7 +30,7 @@ export function personNeeds(state) {
     ...(state.asks ?? []).filter(ask => ask.status === 'open').map(ask => {
       const next = ask.steps.find(step => !step.done);
       return { kind: 'ask', id: `ask:${ask.id}`, ref: `ask #${ask.id}`, text: ask.title, why: ask.why, from: name(ask.from), at: ask.created,
-        steps: ask.steps, next: next?.n ?? null, what: next?.command ?? '', done: next ? `pullboard ask done ${ask.id} --step ${next.n}` : '' };
+        steps: ask.steps, next: next?.n ?? null, what: next?.command ?? '', done: next ? `pullboard ask done ${ask.id} --step ${next.n} --as person` : '' };
     }),
     ...rows.filter(row => row.status === 'pending').map(row => ({ kind: 'pending', id: row.id,
       ref: row.id, text: row.text, what: `pullboard spec answer ${row.id} "<choice>"` })),
