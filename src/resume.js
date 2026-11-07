@@ -131,11 +131,16 @@ export function commitOwnerLines(owners) {
  * The person's row decisions recorded on the board but not yet applied to the row file. The local
  * view records a decision silently, so resume must name it or the coordinator never applies it.
  *
+ * A stale decision is left out: spec apply refuses it STALE_ROW_DECISION, so naming it would loop.
+ *
  * @param {ReturnType<typeof store.rowDecisions>} records
+ * @param {{ id: string, kind: string }[]} [stale] staleRowDecisions for the same records
  * @returns {{ id: string, kind: string, decision: string }[]}
  */
-export function pendingRowApply(records) {
-  return records.filter((record) => !record.applied).map(({ id, kind, decision }) => ({ id, kind, decision }));
+export function pendingRowApply(records, stale = []) {
+  const blocked = new Set(stale.map(({ kind, id }) => `${kind}:${id}`));
+  return records.filter((record) => !record.applied && !blocked.has(`${record.kind}:${record.id}`))
+    .map(({ id, kind, decision }) => ({ id, kind, decision }));
 }
 
 /** One decision as resume says it: `G9 approved`. */
@@ -161,7 +166,7 @@ export function rowDecisionLines(pending, root) {
  * @returns {string}
  */
 export function applyFirst(pending, root, next) {
-  if (!pending.length) return next;
+  if (!pending.length || next.startsWith('pullboard spec apply')) return next;
   return `apply the person's recorded row decisions first: cd ${root} && pullboard spec apply (${pending.map(decided).join(', ')}); then ${next}`;
 }
 

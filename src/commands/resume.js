@@ -68,6 +68,7 @@ import {
 import {
   loadSpec,
 } from '../spec.js';
+import { staleRowDecisions } from '../row-decision-state.js';
 import { initialSpecApprovalBaseline } from '../spec-approval-bootstrap.js';
 import { readResumeSources } from '../resume-sources.js';
 import {
@@ -183,6 +184,7 @@ export async function resumeHere(io, view, diagnostics = false, { json = false }
     const staleVerdicts = pendingMerges.filter(item => item.item_verdict_state);
     const decisionSections = isMain ? coordinatorDecisionSections(board, ctx) : null;
     const { shouts = [], ...decisions } = decisionSections ?? {};
+    const rowDecisions = isMain ? store.rowDecisions(board) : [];
     const needsState = resumeNeeds(root, { board, config: ctx.config, includeRigorUndrafted: me.id === COORDINATOR });
     let proofStatsFallback;
     const flow = decisionSections ? proofStats(board, { now: ctx.clock.now().getTime(),
@@ -196,7 +198,7 @@ export async function resumeHere(io, view, diagnostics = false, { json = false }
       health: recordedHealthFindings(board),
       all,
       needsYou: personNeeds(needsState),
-      ...(isMain ? { pendingApply: pendingRowApply(store.rowDecisions(board)) } : {}),
+      ...(isMain ? { pendingApply: pendingRowApply(rowDecisions, staleRowDecisions(rowDecisions, root, ctx.config)) } : {}),
       ...(me.id === COORDINATOR ? { rigor: { undrafted: needsState.rigorUndrafted, ...(needsState.rigorNotice ? { notice: needsState.rigorNotice } : {}) } } : {}),
       ...(decisionSections ? { ...decisions, ...(diagnostics ? verifiedMergeGroups(root, pendingMerges, shouts, ctx.clock.now().getTime()) : {}),
         flow, ...(proofStatsFallback ? { proofStatsFallback } : {}) } : {}),
