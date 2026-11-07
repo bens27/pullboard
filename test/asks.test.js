@@ -94,3 +94,14 @@ test('board needs map to their commands with prompts, decisions once, and spec a
   assert.equal(needs[5].steps[0].command, 'pullboard spec apply');
   assert.equal(needs[6].steps[0].command, 'pullboard answer 20 {answer}');
 });
+
+test('an ask whose command quotes a placeholder is refused; ${x} is not a placeholder [B26]', () => {
+  const box = helpers.project('true');
+  for (const command of ["echo '{note}'", 'echo "a {note}"']) {
+    const result = box.run(box.web, 'ask', 'Quoted', '--step', `Say it::${command}`, '--json');
+    assert.notEqual(result.code, 0, command);
+    assert.match(result.out + result.err, /ASK_QUOTED_PLACEHOLDER/u);
+  }
+  const filed = run(box, box.web, 'ask', 'Bare', '--step', "Say it::echo \\'{note} ${HOME} '{x'", '--json').ask;
+  assert.deepEqual(filed.steps[0].prompts.map(prompt => prompt.key), ['note']);
+});

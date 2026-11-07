@@ -1,7 +1,10 @@
 /** The pullboard needs command: one list of what waits on the person, shared by the view and the Herdr panels [B26,N26]. */
 import * as store from '../board.js';
 import { withBoardRead } from '../cli-board-read.js';
-import { context, coordinatorDecisionSections } from '../cli.js';
+import {
+  context,
+  coordinatorDecisionSections,
+} from '../cli.js';
 import { needsList } from '../needs-steps.js';
 import { pendingRowApply } from '../resume.js';
 import { resumeNeeds } from '../resume-needs.js';

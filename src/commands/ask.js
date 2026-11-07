@@ -1,8 +1,14 @@
 /** The pullboard ask command: a seat files steps for the person, who runs them at their own pace [B26]. */
-import { dirname, resolve } from 'node:path';
+import {
+  dirname,
+  resolve,
+} from 'node:path';
 import { Refused } from '../refused.js';
 import { parseAskStep } from '../asks.js';
-import { actOn, ordered } from '../cli.js';
+import {
+  actOn,
+  ordered,
+} from '../cli.js';
 
 /** The main checkout, where the person's own terminal and the panels run commands by default. */
 export function mainRoot(info) {

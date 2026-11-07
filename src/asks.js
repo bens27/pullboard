@@ -1,6 +1,11 @@
 /** Things a seat needs the person to run, held on the board so they sync and survive like other records [B26]. */
 import { isAbsolute } from 'node:path';
-import { atomic, logEvent, PERSON, shout } from './board.js';
+import {
+  atomic,
+  logEvent,
+  PERSON,
+  shout,
+} from './board.js';
 import { listAgents } from './board-query.js';
 import { COORDINATOR } from './config.js';
 import { ENGINE_VERSION } from './machine.js';
@@ -9,7 +14,7 @@ import { ASK_ENGINE } from './ask-engine.js';
 
 export { ASK_ENGINE };
 const LINE = /[\r\n\0]/u;
-const PLACEHOLDER = /\{([a-z][a-z0-9_-]{0,31})\}/gu;
+const PLACEHOLDER = /(?<!\$)\{([a-z][a-z0-9_-]{0,31})\}/gu;
 
 /** Split one `--step "<label>::<command>"` value; the label is what the person reads on the button. */
 export function parseAskStep(value) {
@@ -25,6 +30,24 @@ export function stepPrompts(command) {
   return keys.map(key => ({ key, label: key, default: '' }));
 }
 
+/**
+ * The first `{key}` that sits inside '...' or "...", or null. Panels fill a key with a single-quoted
+ * answer, which inside the template's own quotes would close them and run the answer as shell.
+ */
+export function quotedPlaceholder(command) {
+  const text = String(command);
+  let quote = '';
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (quote !== "'" && ch === '\\') { i += 1; continue; }
+    if (ch === "'" || ch === '"') { quote = !quote ? ch : quote === ch ? '' : quote; continue; }
+    if (!quote || ch !== '{' || text[i - 1] === '$') continue;
+    const hit = /^\{([a-z][a-z0-9_-]{0,31})\}/u.exec(text.slice(i));
+    if (hit) return hit[1];
+  }
+  return null;
+}
+
 /** Refuse anything a panel could not show on one line or run in order. */
 function askFiling(value) {
   const text = (field, max) => typeof field === 'string' && field.trim() && field.length <= max && !LINE.test(field);
@@ -34,6 +57,10 @@ function askFiling(value) {
       || steps.some(step => !text(step?.label, 120) || !text(step?.command, 4_096))
       || typeof value.cwd !== 'string' || !isAbsolute(value.cwd) || LINE.test(value.cwd)) {
     throw new Refused('BAD_ASK', 'file an ask with a one-line title, at least one --step "<label>::<command>" and an absolute --cwd');
+  }
+  const quoted = steps.map(step => quotedPlaceholder(step.command)).find(Boolean);
+  if (quoted) {
+    throw new Refused('ASK_QUOTED_PLACEHOLDER', `{${quoted}} sits inside quotes; write it as a bare word, since a panel quotes the answer itself`);
   }
   return { title: value.title.trim(), why: (value.why ?? '').trim(), cwd: value.cwd, personOnly: value.personOnly === true,
     steps: steps.map(step => ({ label: step.label.trim(), command: step.command.trim() })) };

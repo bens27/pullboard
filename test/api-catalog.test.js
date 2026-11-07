@@ -764,6 +764,10 @@ catalogCase('[A1] catalog commands keep their real repository exercises', async 
   const companion = await json(source, source.repo, 'companion', [String(catalog.item_id), 'coordinator', 'Catalog companion', '--key', 'catalog']);
   assert.equal(companion.item.item_parent_id, catalog.item_id);
   assert.equal(companion.created, true);
+  const asked = (await json(source, source.repo, 'ask', ['Catalog ask', '--step', 'First::true', '--step', 'Second::echo {note}'])).ask;
+  assert.equal((await json(source, source.repo, 'ask', ['done', String(asked.id)], 'done')).ask.status, 'open');
+  assert.ok((await json(source, source.repo, 'needs')).needs.some(need => need.id === `ask:${asked.id}` && need.next === 2));
+  assert.equal((await json(source, source.repo, 'ask', ['drop', String(asked.id), '--reason', 'Catalog coverage complete'], 'drop')).ask.status, 'dropped');
   await json(source, source.repo, 'milestone', ['add', 'Catalog', '--items', String(catalog.item_id)], 'add');
   await json(source, source.repo, 'milestone', ['items', 'Catalog', '--remove', String(catalog.item_id)], 'items');
   await json(source, source.repo, 'milestone', ['items', 'Catalog', '--add', String(catalog.item_id)], 'items');
