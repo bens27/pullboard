@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "root": "/tmp/pullboard-needs-fixture",
+  "needs": [
+    {
+      "id": "signoff:G9",
+      "kind": "signoff",
+      "source": "board",
+      "title": "Sign off G9",
+      "why": "The verifier accepted the runbook change; the row waits for your signature.",
+      "from": null,
+      "created": null,
+      "steps": [
+        {
+          "n": 1,
+          "label": "Sign G9",
+          "command": "pullboard spec signoff G9 --note {note}",
+          "cwd": "/tmp/pullboard-needs-fixture",
+          "prompts": [{ "key": "note", "label": "What you checked", "default": "" }],
+          "personOnly": true,
+          "done": false
+        }
+      ],
+      "next": 1
+    },
+    {
+      "id": "ask:3",
+      "kind": "ask",
+      "source": "ask",
+      "title": "Link the board to the relay",
+      "why": "The relay must sign in as you, so an agent cannot run it.",
+      "from": "coordinator",
+      "created": "2026-11-07T10:00:00Z",
+      "steps": [
+        { "n": 1, "label": "Check the relay", "command": "pullboard relay status", "cwd": "/tmp/pullboard-needs-fixture", "prompts": [], "personOnly": false, "done": true },
+        { "n": 2, "label": "Turn the relay on", "command": "pullboard relay on --all", "cwd": "/tmp/pullboard-needs-fixture", "prompts": [], "personOnly": true, "done": false },
+        { "n": 3, "label": "Pair the phone", "command": "pullboard relay pair --name {device}", "cwd": "/tmp/pullboard-needs-fixture", "prompts": [{ "key": "device", "label": "Device name", "default": "Ben's phone" }], "personOnly": true, "done": false }
+      ],
+      "next": 2
+    }
+  ]
+}
