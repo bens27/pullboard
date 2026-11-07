@@ -65,7 +65,11 @@ import { Refused } from './refused.js';
 import { refusalDocument } from './json.js';
 import { relayLinkAvailability } from './relay.js';
 import { personNeeds } from './needs.js';
-import { personVerifies, relayLinkedQuietly, signoffsDue } from './person-calls.js';
+import {
+  personVerifies,
+  relayLinkedQuietly,
+  signoffsDue,
+} from './person-calls.js';
 import { rigorDraftNeeds } from './rigor-notices.js';
 import { sentinelDraftNeeds } from './sentinels.js';
 import { sentinels } from './sentinels.js';
