@@ -18,6 +18,8 @@ const SHIPPED = [
   'integrations/herdr-app/mods/pullboard/cli.js',
   'integrations/herdr-app/mods/pullboard/main.js',
   'integrations/herdr-app/mods/pullboard/mod.json',
+  'integrations/herdr-app/mods/pullboard/needs-model.js',
+  'integrations/herdr-app/mods/pullboard/needs-view.js',
   'integrations/herdr-app/mods/pullboard/read-model.js',
 ].map((path) => path.split('/').pop());
 
