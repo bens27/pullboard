@@ -12,6 +12,7 @@ import {
   focusReasons,
 } from './focus-milestone.js';
 import { requireHandoffActive } from './handoff-state.js';
+import { staleRowDecisions } from './row-decision-state.js';
 import { requestedCommandMove } from './recorded-move.js';
 export { barActorForCommand } from './bar-actor.js';
 import {
@@ -1177,8 +1178,9 @@ export function boardSetup(ctx, card, identity, { decisions: capturedDecisions }
   const decisions = capturedDecisions ?? withBoard(ctx, (board) => store.rowDecisions(board));
   const open = setupDecisionRows(ctx.info.root, ctx.config, decisions, rows);
   const toApply = open.filter(row => row.decision);
-  // spec apply refuses the whole batch while any decision is stale, so setup names no apply then.
-  const applicable = open.some(row => row.staleDecision) ? [] : toApply;
+  // spec apply refuses the whole batch while any decision is stale, including one for a removed or doctrine row.
+  const stale = staleRowDecisions(decisions, ctx.info.root, ctx.config);
+  const applicable = stale.length ? [] : toApply;
   const drafted = open.filter(row => !row.decision);
   const recordedComplete = setupReceiptMatches(ctx, identity, 'complete');
   const started = setupReceiptMatches(ctx, identity, 'started');
@@ -1217,7 +1219,12 @@ export function boardSetup(ctx, card, identity, { decisions: capturedDecisions }
   if (!current && !recordedComplete) recordSetupState(ctx, identity, 'complete');
   else if (current && !completed && !started) recordSetupState(ctx, identity, 'started');
   const seat = ctx.io.callerRole() === 'seat';
-  if (current?.number === 1 && !drafted.length && toApply.length) return { step: 1, total: 5, ...current, steps, ...applyStep(toApply.map(row => row.id), seat) };
+  if (current?.number === 1 && !drafted.length && applicable.length) return { step: 1, total: 5, ...current, steps, ...applyStep(applicable.map(row => row.id), seat) };
+  if (current?.number === 1 && !drafted.length && toApply.length) {
+    const rowIds = [...new Set(stale.map(record => record.id))];
+    return { step: 1, total: 5, ...current, steps, waitingOn: 'person-approval', rowIds,
+      agentNext: `wait for the person's new decision on ${rowIds.join(', ')}` };
+  }
   if (current?.number === 1 && drafted.length) {
     const rowIds = drafted.map(row => row.id);
     const names = rowIds.join(', ');
