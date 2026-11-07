@@ -18,7 +18,8 @@ export function shellQuote(value) {
  * Fill a step's `{key}` placeholders from the person's answers, each value shell-quoted. Only keys
  * the step declares as prompts are filled, so shell text such as `${HOME}` passes through. A step
  * with a declared placeholder is refused when it uses ", a backtick, \ or $(, since each can put
- * the answer back inside a shell parse; with those gone single quotes cannot nest, so a
+ * the answer back inside a shell parse, and << or a line break, since a here-document body expands
+ * $( even inside ' quotes. With those gone single quotes cannot nest, so a
  * placeholder between two ' is refused too: `'{note}'` answered `$(cmd)` would run cmd.
  *
  * @param {{ command: string, prompts?: { key: string, default?: string }[] }} step
@@ -38,9 +39,9 @@ export function fillCommand(step, values = {}) {
     if (hit && prompts.has(hit[1])) hits.push({ at, key: hit[1], length: hit[0].length, quoted });
   }
   if (!hits.length) return template;
-  const unsafe = /["`\\]|\$\(/u.test(template) ? hits[0] : hits.find((hit) => hit.quoted);
+  const unsafe = /["`\\\n\r]|\$\(|<</u.test(template) ? hits[0] : hits.find((hit) => hit.quoted);
   if (unsafe) {
-    throw new Error(`placeholder {${unsafe.key}} cannot be filled safely: a step with one may not use ", \`, \\ or $(, or quote it in: ${template}`);
+    throw new Error(`placeholder {${unsafe.key}} cannot be filled safely: a step with one may not use ", \`, \\, $(, << or a line break, or quote it in: ${template}`);
   }
   let out = '';
   let from = 0;

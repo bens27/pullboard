@@ -36,6 +36,7 @@ test('a declared placeholder near a quote, backslash or $( is refused, since the
     "printf '%s' '{note}'", 'echo "said: {note}"', "echo 'a\\' \"{note}\"", 'echo "\\{note}"',
     '"$(printf "%s" "{note}")"', '"$(echo " {note} ")"', '\\{note}', '$(echo {note})', 'echo `{note}`',
     "echo \\'{note} '{other}' \"${HOME}\"",
+    'cat <<EOF\n{note}\nEOF', 'cat <<-EOF\r{note}', 'cat <<< {note}', 'echo {note}\necho done',
   ];
   for (const command of refused) assert.throws(() => fillCommand({ command, prompts }, attack), /cannot be filled safely/, command);
   assert.equal(fillCommand({ command: "echo {note} ${HOME} '{x'", prompts }, attack), "echo '$(touch /tmp/pwned)' ${HOME} '{x'");
