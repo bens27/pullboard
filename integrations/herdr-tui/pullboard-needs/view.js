@@ -177,11 +177,11 @@ export function press(state, key) {
   return { state };
 }
 
-// A control character drawn raw could move the cursor or clear the screen, so the text a person
-// reads differs from what runs; shown as \xNN it is visible and harmless. Display only.
-function visible(text) {
-  return String(text).replace(/[\x00-\x1f\x7f-\x9f]/gu, (char) => `\\x${char.codePointAt(0).toString(16).padStart(2, '0')}`);
-}
+const GRAPHEMES = new Intl.Segmenter('en', { granularity: 'grapheme' });
+const ASCII = /^[\x20-\x7e]$/u;
+const CONTROL = /[\x00-\x1f\x7f-\x9f]/u;
+const ON = '\x1b[7m';
+const OFF = '\x1b[27m';
 
 // Cells a grapheme may take, never fewer than drawn: width tables and zero-width exceptions kept
 // missing cases (a heart or keycap with a variation selector) that spilled a line onto extra rows
@@ -189,56 +189,86 @@ function visible(text) {
 // grapheme, so two for every non-ASCII code point can only over-count, which only shortens a line.
 function cells(text) {
   let sum = 0;
-  for (const char of text) sum += /^[\x20-\x7e]$/u.test(char) ? 1 : 2;
+  for (const char of text) sum += ASCII.test(char) ? 1 : 2;
   return sum;
 }
 
-const GRAPHEMES = new Intl.Segmenter('en', { granularity: 'grapheme' });
-
-// Whole graphemes, so a line never starts with an accent or selector cut from its base.
-function graphemes(text) {
-  return [...GRAPHEMES.segment(text)].map(({ segment }) => segment);
+// An escape is drawn in reverse video so it never reads the same as a command's literal "\x1b".
+function styled(text) {
+  return { text: `${ON}${text}${OFF}`, width: text.length, plain: text };
 }
 
-function cut(line, cols) {
-  let out = '';
-  let used = 0;
-  for (const part of graphemes(visible(line))) {
-    used += cells(part);
-    if (used > cols) break;
-    out += part;
+function escaped(char) {
+  if (ASCII.test(char)) return { text: char, width: 1 };
+  const code = char.codePointAt(0);
+  return styled(CONTROL.test(char) ? `\\x${code.toString(16).padStart(2, '0')}` : `\\u{${code.toString(16)}}`);
+}
+
+// Drawable pieces of a text, never split across lines. A control character drawn raw could move
+// the cursor or clear the screen, and a grapheme stacked past four cells could be wider than any
+// line, so either is shown one escape per code point; the person reads exactly what runs.
+function units(text) {
+  const out = [];
+  for (const { segment } of GRAPHEMES.segment(String(text))) {
+    if (!CONTROL.test(segment) && cells(segment) <= 4) out.push({ text: segment, width: cells(segment) });
+    else for (const char of segment) out.push(escaped(char));
   }
   return out;
 }
 
-function wrap(text, width) {
+function width(text) {
+  return units(text).reduce((sum, unit) => sum + unit.width, 0);
+}
+
+// A unit too wide for a whole line is split, never dropped: an escape into its styled characters,
+// a raw grapheme into its escapes.
+function narrow(unit, room) {
+  if (unit.width <= room) return [unit];
+  if (unit.plain) return [...unit.plain].map((char) => styled(char));
+  return [...unit.text].flatMap((char) => narrow(escaped(char), room));
+}
+
+// Display text cut to whole units within the width. Takes raw text only: drawing a line twice
+// would escape its own style codes.
+function fit(text, cols) {
+  let out = '';
+  let used = 0;
+  for (const unit of units(text)) {
+    if (used + unit.width > cols) break;
+    out += unit.text;
+    used += unit.width;
+  }
+  return out;
+}
+
+function wrap(text, cols) {
   const lines = [];
   let line = '';
-  for (const word of visible(text).split(/\s+/u).filter(Boolean)) {
-    if (line && cells(line) + 1 + cells(word) > width) { lines.push(line); line = word; }
+  for (const word of String(text).split(/\s+/u).filter(Boolean)) {
+    if (line && width(line) + 1 + width(word) > cols) { lines.push(line); line = word; }
     else line = line ? `${line} ${word}` : word;
   }
   if (line) lines.push(line);
   return lines;
 }
 
-// A command or folder about to be authorized is cut at the character, never dropped: every
-// character stays on screen, and a continuation is indented under its first line.
+// A command or folder about to be authorized is wrapped at whole units, never dropped: every
+// character stays on screen, and a continuation is indented under its first line. The lines are
+// final display text, already within the width.
 function hardWrap(text, first, rest, cols) {
   const lines = [];
   let line = '';
-  let room = cols - cells(first);
+  let room = Math.max(1, cols - cells(first));
   let used = 0;
-  for (const part of graphemes(visible(text))) {
-    const width = cells(part);
-    if (line && used + width > room) {
+  for (const unit of units(text).flatMap((part) => narrow(part, Math.max(1, cols - Math.max(cells(first), cells(rest)))))) {
+    if (line && used + unit.width > room) {
       lines.push((lines.length ? rest : first) + line);
       line = '';
       used = 0;
-      room = cols - cells(rest);
+      room = Math.max(1, cols - cells(rest));
     }
-    line += part;
-    used += width;
+    line += unit.text;
+    used += unit.width;
   }
   lines.push((lines.length ? rest : first) + line);
   return lines;
@@ -246,23 +276,26 @@ function hardWrap(text, first, rest, cols) {
 
 // A confirm screen keeps its footer on the last row however long it is, so the person can always
 // confirm or cancel, and scrolls the rest so no command or folder they authorize is out of reach.
-function paged(body, footer, scroll, rows) {
+// The body is display lines already within the width.
+function paged(body, footer, scroll, rows, cols) {
   const room = Math.max(0, rows - 1);
   const top = Math.min(scroll, Math.max(0, body.length - room));
-  const more = body.length > room ? 'up/down scroll   ' : '';
-  return [...body.slice(top, top + room), `${more}${footer}`];
+  // On a narrow screen the scroll hint gives way, so y and n stay readable.
+  const more = body.length > room && width(`up/down scroll   ${footer}`) <= cols ? 'up/down scroll   ' : '';
+  return [...body.slice(top, top + room), fit(`${more}${footer}`, cols)];
 }
 
 function batchLines(state, cols, rows) {
   const { filled } = state.batch;
-  const body = [`Run these ${filled.length} steps in order in one new tab?`, ''];
+  const body = [fit(`Run these ${filled.length} steps in order in one new tab?`, cols), ''];
   filled.forEach(({ step, command }, index) => {
     const number = `  ${index + 1}. `;
     const indent = ' '.repeat(number.length);
     body.push(...hardWrap(command, number, indent, cols), ...hardWrap(step.cwd, `${indent}in `, `${indent}   `, cols));
   });
-  body.push('', ...wrap('Each ask step is marked done when it exits 0. The first step that fails stops the rest.', Math.max(20, cols - 2)), '');
-  return paged(body, 'y run all   n cancel', state.scroll, rows);
+  const note = wrap('Each ask step is marked done when it exits 0. The first step that fails stops the rest.', Math.max(20, cols - 2));
+  body.push('', ...note.map((line) => fit(line, cols)), '');
+  return paged(body, 'y run all   n cancel', state.scroll, rows, cols);
 }
 
 const MARK = { done: '[x]', next: '[>]', waiting: '[ ]' };
@@ -282,7 +315,7 @@ function needLines(state, width) {
 }
 
 /**
- * Draw a state as at most `rows` lines, each cut to `cols` characters.
+ * Draw a state as at most `rows` lines, each within `cols` cells; escapes are styled in reverse video.
  *
  * @param {any} state
  * @param {number} cols
@@ -307,7 +340,7 @@ export function render(state, cols, rows) {
     const count = state.selected.length;
     lines.push('', count ? `up/down choose   space select   r/enter run selected (${count})   q close` : 'up/down choose   space select   enter open   r refresh   q close');
   } else if (state.mode === 'need') lines = needLines(state, width);
-  else if (state.mode === 'batch') return batchLines(state, cols, rows).map((line) => cut(line, cols));
+  else if (state.mode === 'batch') return batchLines(state, cols, rows);
   else if (state.mode === 'prompt' && state.batch) {
     const { items, index, promptIndex } = state.batch;
     const { need, step } = items[index];
@@ -317,9 +350,9 @@ export function render(state, cols, rows) {
     const prompt = state.step.prompts[state.promptIndex];
     lines = [state.need.title, '', `Step ${state.step.n}: ${state.step.label ?? ''}`, '', `${prompt.label ?? prompt.key}:`, `> ${state.input}_`, '', 'enter accept   esc cancel   ctrl+u clear'];
   } else {
-    const body = [state.need.title, '', `Run step ${state.step.n} in a new tab?`, '', ...hardWrap(state.command, '  ', '    ', cols), ...hardWrap(state.step.cwd, '  in ', '     ', cols), ''];
-    if (state.need.source === 'ask') body.push(...wrap('When it exits 0 the step is marked done on the board.', width), '');
-    lines = paged(body, 'y run   n cancel', state.scroll, rows);
+    const body = [fit(state.need.title, cols), '', fit(`Run step ${state.step.n} in a new tab?`, cols), '', ...hardWrap(state.command, '  ', '    ', cols), ...hardWrap(state.step.cwd, '  in ', '     ', cols), ''];
+    if (state.need.source === 'ask') body.push(...wrap('When it exits 0 the step is marked done on the board.', width).map((line) => fit(line, cols)), '');
+    return paged(body, 'y run   n cancel', state.scroll, rows, cols);
   }
-  return lines.slice(0, rows).map((line) => cut(line, cols));
+  return lines.slice(0, rows).map((line) => fit(line, cols));
 }

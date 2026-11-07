@@ -408,13 +408,15 @@ test('an answer with a control character is refused, and a control character in 
   const need = { id: 'ask:0123abcd', kind: 'ask', source: 'ask', title: 'Esc', steps: [{ n: 1, label: 'Esc', command, cwd: '/r\x1bq', prompts: [], done: false }], next: 1 };
   const start = loaded(initialState(), { root: '/r', needs: [need] });
   for (const confirm of [keys(start, 'enter', 'enter').state, keys(start, ' ', 'r').state]) {
-    const lines = render(confirm, 80, 40);
-    assert.ok(lines.every((line) => !/[\x00-\x1f\x7f-\x9f]/u.test(line)), lines.join('|'));
+    const drawn = render(confirm, 80, 40);
+    assert.ok(drawn.every((line) => !/[\x00-\x1f\x7f-\x9f]/u.test(line.replaceAll('\x1b[7m', '').replaceAll('\x1b[27m', ''))), drawn.join('|'));
+    const lines = drawn.map(seenText);
     assert.ok(lines.some((line) => line.includes('printf \\x1b[2J\\x1b]0;x\\x07')), lines.join('\n'));
     assert.ok(lines.some((line) => line.includes('in /r\\x1bq')), lines.join('\n'));
+    assert.ok(drawn.some((line) => decodeEscapes(line).includes(command)), drawn.join('\n'));
   }
   assert.equal(keys(start, 'enter', 'enter', 'y').effects[0].run.command, command);
-  assert.ok(render(keys(start, 'enter').state, 80, 40).every((line) => !/[\x00-\x1f\x7f-\x9f]/u.test(line)));
+  assert.ok(render(keys(start, 'enter').state, 80, 40).every((line) => !/[\x00-\x1f\x7f-\x9f]/u.test(line.replaceAll('\x1b[7m', '').replaceAll('\x1b[27m', ''))));
 });
 
 /** The most cells a code point can take: printable ASCII one, zero-width marks none, anything else two. */
@@ -434,11 +436,11 @@ test('confirm screens count every non-ASCII character as two cells, so no emoji 
       const seen = [];
       for (let down = 0; down < 80; down += 1) {
         const screen = render(keys(confirm, ...Array(down).fill('down')).state, 40, 6);
-        for (const line of screen) assert.ok(widest(line) <= 40, `${widest(line)}: ${line}`);
+        for (const line of screen.map(seenText)) assert.ok(widest(line) <= 40, `${widest(line)}: ${line}`);
         seen.push(...screen.slice(0, 5));
       }
       const tall = render(confirm, 40, 400);
-      assert.equal(unwrap(tall, first, rest), command);
+      assert.equal(unwrap(tall.map(decodeEscapes), first, rest), command);
       for (const line of tall.slice(0, -1)) assert.ok(seen.includes(line), line);
     }
   }
@@ -461,14 +463,118 @@ test('confirm screens keep keycaps and combining accents inside the width, whole
       const seen = [];
       for (let down = 0; down < 120; down += 1) {
         const screen = render(keys(confirm, ...Array(down).fill('down')).state, 40, 6);
-        for (const line of screen) assert.ok(graphemeCells(line) <= 40, `${graphemeCells(line)}: ${line}`);
+        for (const line of screen.map(seenText)) assert.ok(graphemeCells(line) <= 40, `${graphemeCells(line)}: ${line}`);
         seen.push(...screen.slice(0, 5));
       }
       const tall = render(confirm, 40, 600);
-      assert.equal(unwrap(tall, first, rest), command);
+      assert.equal(unwrap(tall.map(decodeEscapes), first, rest), command);
       for (const line of tall.slice(0, -1)) assert.ok(seen.includes(line), line);
       const body = tall.filter((line) => line.startsWith(rest) || line.startsWith(first));
       assert.ok(body.every((line) => !/^\s*[️⃣́]/u.test(line.slice(rest.length))), 'a line starts mid-grapheme');
+    }
+  }
+});
+
+/** The text a styled panel escape stands for: \xNN or \u{hex} back to its code point. */
+function decodeEscapes(line) {
+  return line.replace(/\x1b\[7m\\(?:x([0-9a-f]{2})|u\{([0-9a-f]+)\})\x1b\[27m/gu, (_, byte, point) => String.fromCodePoint(parseInt(byte ?? point, 16)));
+}
+
+/** A line as a person sees it: each styled escape is its visible ASCII text. */
+function seenText(line) {
+  return line.replace(/\x1b\[7m(\\(?:x[0-9a-f]{2}|u\{[0-9a-f]+\}))\x1b\[27m/gu, '$1');
+}
+
+/** Cells a line takes at most once styled escapes are their text: any non-ASCII grapheme two, else one. */
+function fuzzCells(line) {
+  let sum = 0;
+  for (const { segment } of new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(seenText(line))) sum += /[^\x20-\x7e]/u.test(segment) ? 2 : 1;
+  return sum;
+}
+
+/** Rebuild the command, then the folder, from the lines after the command's first line. */
+function rebuild(lines, at, parts) {
+  let index = at;
+  for (const { text, first, rest } of parts) {
+    let acc = '';
+    for (let line = 0; acc !== text; line += 1, index += 1) {
+      assert.ok(index < lines.length, `ran out of lines rebuilding ${JSON.stringify(text)} from ${JSON.stringify(acc)}`);
+      const prefix = line ? rest : first;
+      assert.ok(lines[index].startsWith(prefix), JSON.stringify(lines[index]));
+      acc += decodeEscapes(lines[index].slice(prefix.length));
+      assert.ok(text.startsWith(acc), `${JSON.stringify(acc)} is not the start of ${JSON.stringify(text)}`);
+    }
+  }
+}
+
+/** Every line within the width at every scroll position, footer kept, and the command and folder rebuilt whole. */
+function checkConfirm(confirm, { command, cwd, cols, rows, first, rest, cwdFirst, cwdRest, at }) {
+  const tall = render(confirm, cols, 10000);
+  assert.ok(tall[at].startsWith(first), `${at}: ${JSON.stringify(tall)}`);
+  rebuild(tall, at, [{ text: command, first, rest }, { text: cwd, first: cwdFirst, rest: cwdRest }]);
+  const footer = tall.at(-1);
+  const top = render(confirm, cols, rows);
+  if (at < rows - 1) assert.equal(top[at], tall[at]);
+  const seen = [];
+  for (let scroll = 0; scroll <= tall.length; scroll += 1) {
+    const screen = render({ ...confirm, scroll }, cols, rows);
+    assert.ok(screen.length <= rows);
+    for (const line of screen) assert.ok(fuzzCells(line) <= cols, `${fuzzCells(line)} > ${cols}: ${JSON.stringify(line)}`);
+    assert.ok(screen.at(-1).endsWith(footer), JSON.stringify(screen.at(-1)));
+    seen.push(...screen.slice(0, -1));
+  }
+  for (const line of tall.slice(0, -1)) assert.ok(seen.includes(line), JSON.stringify(line));
+}
+
+test('an answer of stacked combining accents is shown whole on both confirm screens [B26]', () => {
+  const answer = `e${'́'.repeat(20)}`;
+  const step = { n: 1, label: 'Accent', command: 'echo {answer}', cwd: '/r', prompts: [{ key: 'answer' }], done: false };
+  const need = { id: 'ask:0123abcd', kind: 'ask', source: 'ask', title: 'Accent', steps: [step], next: 1 };
+  const start = loaded(initialState(), { root: '/r', needs: [need] });
+  const command = `echo '${answer}'`;
+  const single = keys(start, 'enter', 'enter', ...answer, 'enter');
+  assert.equal(single.state.mode, 'confirm');
+  checkConfirm(single.state, { command, cwd: '/r', cols: 40, rows: 6, first: '  ', rest: '    ', cwdFirst: '  in ', cwdRest: '     ', at: 4 });
+  assert.equal(keys(single.state, 'y').effects[0].run.command, command);
+  const batch = keys(start, ' ', 'r', ...answer, 'enter');
+  assert.equal(batch.state.mode, 'batch');
+  checkConfirm(batch.state, { command, cwd: '/r', cols: 40, rows: 6, first: '  1. ', rest: '     ', cwdFirst: '     in ', cwdRest: '        ', at: 2 });
+  assert.equal(keys(batch.state, 'y').effects[0].batch.items[0].command, command);
+});
+
+function mulberry32(seed) {
+  let a = seed;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+test('fuzzed commands and folders are shown whole, within the width, at every scroll on both confirm screens [B26]', () => {
+  const random = mulberry32(0xb26);
+  const pick = (list) => list[Math.floor(random() * list.length)];
+  const pool = [
+    () => pick([...'abcXYZ ']), () => '界', () => '❤️', () => '1️⃣', () => '👩‍👩‍👧', () => 'é', () => 'é',
+    () => '́'.repeat(1 + Math.floor(random() * 60)), () => '​', () => '️', () => '\x1b', () => '\x7f',
+    () => '\\x1b', () => '\\u{301}',
+  ];
+  const text = (most) => Array.from({ length: Math.floor(random() * most) }, () => pick(pool)()).join('');
+  for (let run = 0; run < 500; run += 1) {
+    const command = `echo ${text(40)}`;
+    const cwd = `/${text(12)}`;
+    const cols = 20 + Math.floor(random() * 61);
+    const rows = 4 + Math.floor(random() * 7);
+    const need = { id: 'ask:0123abcd', kind: 'ask', source: 'ask', title: text(10), steps: [{ n: 1, label: 'Fuzz', command, cwd, prompts: [], done: false }], next: 1 };
+    const start = loaded(initialState(), { root: '/r', needs: [need] });
+    const label = `run ${run}`;
+    try {
+      checkConfirm(keys(start, 'enter', 'enter').state, { command, cwd, cols, rows, first: '  ', rest: '    ', cwdFirst: '  in ', cwdRest: '     ', at: 4 });
+      checkConfirm(keys(start, ' ', 'r').state, { command, cwd, cols, rows, first: '  1. ', rest: '     ', cwdFirst: '     in ', cwdRest: '        ', at: 2 });
+    } catch (error) {
+      error.message = `${label} ${JSON.stringify({ command, cwd, cols, rows })}: ${error.message}`;
+      throw error;
     }
   }
 });
