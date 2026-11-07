@@ -416,3 +416,30 @@ test('an answer with a control character is refused, and a control character in 
   assert.equal(keys(start, 'enter', 'enter', 'y').effects[0].run.command, command);
   assert.ok(render(keys(start, 'enter').state, 80, 40).every((line) => !/[\x00-\x1f\x7f-\x9f]/u.test(line)));
 });
+
+/** The most cells a code point can take: printable ASCII one, zero-width marks none, anything else two. */
+function widest(line) {
+  return [...line].reduce((sum, char) => sum + (/^[\x20-\x7e]$/u.test(char) ? 1 : /[\p{Mn}\p{Me}\p{Cf}]/u.test(char) ? 0 : 2), 0);
+}
+
+test('confirm screens count every non-ASCII character as two cells, so no emoji or symbol overflows [B26]', () => {
+  const mixes = ['❤️'.repeat(200), `${'é é Ω — 👩‍👩‍👧 '.repeat(20)}end`];
+  for (const text of mixes) {
+    const command = `echo '${text}'`;
+    const need = { id: 'ask:0123abcd', kind: 'ask', source: 'ask', title: 'Wide', steps: [{ n: 1, label: 'Wide', command, cwd: `/r/${text.slice(0, 30)}`, prompts: [], done: false }], next: 1 };
+    const start = loaded(initialState(), { root: '/r', needs: [need] });
+    for (const [confirm, first, rest] of [[keys(start, 'enter', 'enter').state, '  ', '    '], [keys(start, ' ', 'r').state, '  1. ', '     ']]) {
+      const top = render(confirm, 40, 6);
+      assert.ok(top.some((line) => line.startsWith(`${first}echo '`)), top.join('\n'));
+      const seen = [];
+      for (let down = 0; down < 80; down += 1) {
+        const screen = render(keys(confirm, ...Array(down).fill('down')).state, 40, 6);
+        for (const line of screen) assert.ok(widest(line) <= 40, `${widest(line)}: ${line}`);
+        seen.push(...screen.slice(0, 5));
+      }
+      const tall = render(confirm, 40, 400);
+      assert.equal(unwrap(tall, first, rest), command);
+      for (const line of tall.slice(0, -1)) assert.ok(seen.includes(line), line);
+    }
+  }
+});

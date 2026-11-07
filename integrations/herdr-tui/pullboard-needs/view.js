@@ -183,16 +183,14 @@ function visible(text) {
   return String(text).replace(/[\x00-\x1f\x7f-\x9f]/gu, (char) => `\\x${char.codePointAt(0).toString(16).padStart(2, '0')}`);
 }
 
-const WIDE = [[0x1100, 0x115f], [0x2e80, 0x303e], [0x3041, 0x33ff], [0x3400, 0x4dbf], [0x4e00, 0x9fff], [0xa000, 0xa4cf], [0xa960, 0xa97f],
-  [0xac00, 0xd7a3], [0xf900, 0xfaff], [0xfe10, 0xfe19], [0xfe30, 0xfe6f], [0xff00, 0xff60], [0xffe0, 0xffe6], [0x20000, 0x3fffd]];
-
-// Terminal cells one code point takes. Counting code points instead let a line of wide characters
-// spill onto extra rows and push the start of a command off the confirm screen.
+// Terminal cells one code point may take, never fewer than drawn: width tables kept missing
+// cases (an emoji with a variation selector, ambiguous-width symbols) that spilled a line onto
+// extra rows and pushed a command's start off the confirm screen, so anything past printable
+// ASCII counts as two. Over-counting only makes a line shorter.
 function cellWidth(char) {
+  if (/^[\x20-\x7e]$/u.test(char)) return 1;
   if (/[\p{Mn}\p{Me}\p{Cf}]/u.test(char)) return 0;
-  const point = char.codePointAt(0);
-  if (WIDE.some(([low, high]) => point >= low && point <= high) || /\p{Emoji_Presentation}/u.test(char)) return 2;
-  return 1;
+  return 2;
 }
 
 function cells(text) {
