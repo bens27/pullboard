@@ -9,7 +9,21 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { askId, fillCommand, needsMissing, nextStep, parseNeeds, rootPane, shellQuote, stepScript, stepState, tabCreateArgs } from '../integrations/herdr-tui/pullboard-needs/needs.js';
+import {
+  askId,
+  batchRefusal,
+  batchScript,
+  batchSteps,
+  fillCommand,
+  needsMissing,
+  nextStep,
+  parseNeeds,
+  rootPane,
+  shellQuote,
+  stepScript,
+  stepState,
+  tabCreateArgs,
+} from '../integrations/herdr-tui/pullboard-needs/needs.js';
 import { initialState, loaded, press, render } from '../integrations/herdr-tui/pullboard-needs/view.js';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -189,4 +203,113 @@ test('the step view marks done, next and waiting steps; a note replaces the list
   const note = loaded(initialState(), { note: 'This pullboard has no `needs` command yet.' });
   assert.deepEqual(render(note, 80, 10), ['Needs you', '', 'This pullboard has no `needs` command yet.', '', 'r refresh   q close']);
   assert.ok(render(opened, 10, 3).every((line) => line.length <= 10));
+});
+
+test('a batch takes the selected needs in list order, with every remaining step of an ask [B26]', () => {
+  const board = parseNeeds(FIXTURE);
+  const picked = batchSteps(board.needs, ['ask:3f9a0c12', 'signoff:G9']);
+  assert.deepEqual(picked.map(({ need, step }) => `${need.id}#${step.n}`), ['signoff:G9#1', 'ask:3f9a0c12#2', 'ask:3f9a0c12#3']);
+
+  const start = loaded(initialState(), board);
+  const chosen = keys(start, ' ', 'down', ' ');
+  assert.deepEqual(chosen.state.selected, ['signoff:G9', 'ask:3f9a0c12']);
+  assert.ok(render(chosen.state, 80, 40).some((line) => line.startsWith('> [x] Link the board to the relay')));
+  const asked = keys(chosen.state, 'r', ...'ok', 'enter');
+  assert.equal(asked.state.mode, 'prompt');
+  assert.ok(render(asked.state, 80, 40).some((line) => line.includes('[3/3]')));
+  const ready = keys(asked.state, 'enter');
+  assert.equal(ready.state.mode, 'batch');
+  const screen = render(ready.state, 120, 40);
+  assert.ok(screen.includes("  1. pullboard spec signoff G9 --note 'ok'"));
+  assert.ok(screen.includes('  2. pullboard relay on --all'));
+  assert.ok(screen.includes("  3. pullboard relay pair --name 'Ben'\\''s phone'"));
+  assert.ok(screen.includes('     in /tmp/pullboard-needs-fixture'));
+  const ran = keys(ready.state, 'y');
+  assert.equal(ran.effects.length, 1);
+  assert.deepEqual(ran.effects[0].batch.items.map(({ need, step, command }) => [need.id, step.n, command]), [
+    ['signoff:G9', 1, "pullboard spec signoff G9 --note 'ok'"],
+    ['ask:3f9a0c12', 2, 'pullboard relay on --all'],
+    ['ask:3f9a0c12', 3, "pullboard relay pair --name 'Ben'\\''s phone'"],
+  ]);
+  assert.equal(ran.effects[0].batch.root, board.root);
+  assert.equal(keys(chosen.state, 'enter', 'escape').state.mode, 'list');
+  assert.equal(keys(chosen.state, 'enter').state.mode, 'prompt');
+});
+
+test('a need without a safe next step cannot be selected, and the list says why [B26]', () => {
+  const step = { n: 1, label: 'Note it', command: "printf '%s' '{note}'", cwd: '/r', prompts: [{ key: 'note' }], done: false };
+  const unsafe = { id: 'ask:9c0ffee1', kind: 'ask', source: 'ask', title: 'Quoted', steps: [{ ...step, n: 1, command: 'true' }, { ...step, n: 2 }], next: 1 };
+  const finished = { id: 'signoff:G1', kind: 'signoff', source: 'board', title: 'Finished', steps: [{ ...step, command: 'true', done: true }], next: null };
+  assert.match(batchRefusal(unsafe), /cannot be filled safely/u);
+  assert.match(batchRefusal(finished), /no step to run/u);
+  assert.equal(batchRefusal(parseNeeds(FIXTURE).needs[1]), '');
+  const start = loaded(initialState(), { root: '/r', needs: [unsafe, finished] });
+  const pressed = keys(start, ' ', 'down', ' ', 'r');
+  assert.deepEqual(pressed.state.selected, []);
+  assert.deepEqual(pressed.effects, ['refresh']);
+  const lines = render(keys(start, ' ').state, 120, 40);
+  assert.ok(lines.includes('> [-] Quoted  [ask] 0/2'));
+  assert.ok(lines.some((line) => line.startsWith('Cannot select: ') && line.includes('cannot be filled safely')));
+  assert.deepEqual(batchSteps([unsafe, finished], ['ask:9c0ffee1', 'signoff:G1']), []);
+});
+
+test('cancelling a batch at a prompt or at the confirm runs nothing [B26]', () => {
+  const start = loaded(initialState(), parseNeeds(FIXTURE));
+  const chosen = keys(start, ' ', 'down', ' ').state;
+  for (const cancel of [['r', 'escape'], ['r', 'enter', 'escape'], ['r', 'enter', 'enter', 'n'], ['r', 'enter', 'enter', 'escape']]) {
+    const { state, effects } = keys(chosen, ...cancel);
+    assert.deepEqual(effects, [], cancel.join(' '));
+    assert.equal(state.mode, 'list', cancel.join(' '));
+    assert.equal(state.batch, null, cancel.join(' '));
+  }
+  const multiline = keys(chosen, 'r', ...'a\nb', 'enter', 'enter', 'y');
+  assert.deepEqual(multiline.effects, []);
+  assert.equal(multiline.state.mode, 'note');
+});
+
+/** Run a batch script in a temporary folder with a stand-in pullboard that logs its argv and folder. */
+function runBatch(t, items) {
+  const dir = mkdtempSync(join(tmpdir(), 'needs-batch-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const bin = join(dir, 'bin');
+  const root = join(dir, 'board');
+  const self = join(dir, 'self');
+  for (const folder of [bin, root, self, join(dir, 'a dir'), join(dir, 'b')]) mkdirSync(folder);
+  writeFileSync(join(bin, 'pullboard'), `#!/bin/sh\necho "$PWD|$*" >> ${shellQuote(join(dir, 'log'))}\n`);
+  chmodSync(join(bin, 'pullboard'), 0o755);
+  const filled = items.map(({ need, step, command }) => ({ need, step: { ...step, cwd: join(dir, step.cwd) }, command }));
+  writeFileSync(join(self, 'batch.zsh'), batchScript({ items: filled, root, self }));
+  const result = spawnSync('/bin/zsh', ['-f', join(self, 'batch.zsh')], { env: { PATH: `${bin}:/usr/bin:/bin` }, encoding: 'utf8' });
+  const log = existsSync(join(dir, 'log')) ? readFileSync(join(dir, 'log'), 'utf8') : '';
+  return { result, log, dir, root, selfGone: !existsSync(self) };
+}
+
+test('a batch script runs steps in order, stops at the first failure and marks only passed ask steps done [B26]', (t) => {
+  const ask = { id: 'ask:3f9a0c12', source: 'ask', title: 'Ask' };
+  const board = { id: 'signoff:G9', source: 'board', title: 'Board' };
+  const step = (n, label, cwd) => ({ n, label, cwd, command: 'unused' });
+  const items = [
+    { need: board, step: step(1, 'Board one', 'b'), command: 'touch ran1' },
+    { need: ask, step: step(2, "Ask's two", 'a dir'), command: 'pwd > ran2' },
+    { need: ask, step: step(3, 'Ask three', 'b'), command: 'false' },
+    { need: ask, step: step(4, 'Ask four', 'b'), command: 'touch ran4' },
+  ];
+  const { result, log, dir, root, selfGone } = runBatch(t, items);
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(selfGone, true);
+  assert.equal(existsSync(join(dir, 'b', 'ran1')), true);
+  assert.equal(readFileSync(join(dir, 'a dir', 'ran2'), 'utf8'), `${join(dir, 'a dir')}\n`);
+  assert.equal(existsSync(join(dir, 'b', 'ran4')), false);
+  assert.equal(log, `${root}|ask done 3f9a0c12 --step 2 --as person\n`);
+  const out = result.stdout;
+  assert.ok(out.includes(`[1/4] Board one  (in ${join(dir, 'b')})`), out);
+  assert.ok(out.includes(`[2/4] Ask's two  (in ${join(dir, 'a dir')})`), out);
+  assert.ok(out.includes('stopped at [3/4]: exit 1; later steps not run'), out);
+  assert.ok(!out.includes('[4/4] Ask four  (in'), out);
+  assert.match(out, /\[1\/4\] Board one: done\n\[2\/4\] Ask's two: done\n\[3\/4\] Ask three: failed \(exit 1\)\n\[4\/4\] Ask four: not run\n/u);
+
+  const passed = runBatch(t, items.filter((item) => item.step.n !== 3));
+  assert.equal(passed.result.status, 0, passed.result.stderr);
+  assert.equal(passed.log, `${passed.root}|ask done 3f9a0c12 --step 2 --as person\n${passed.root}|ask done 3f9a0c12 --step 4 --as person\n`);
+  assert.match(passed.result.stdout, /\[3\/3\] Ask four: done\n/u);
 });

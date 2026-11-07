@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * The "Needs you" popup Herdr opens for the pullboard.needs plugin [B26]. It reads the board with
- * `pullboard needs --json` in the board root, and starts the step the person confirms in a new tab
- * of their current workspace. It never writes the board itself: an ask's step is recorded by the
+ * `pullboard needs --json` in the board root, and starts the step, or the batch of selected steps,
+ * the person confirms in a new tab of their current workspace. It never writes the board itself: an ask's step is recorded by the
  * tab's script, after the command exits 0, so agents pick it up at their next check.
  */
 import { execFile } from 'node:child_process';
@@ -10,7 +10,15 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { needsMissing, parseNeeds, rootPane, shellQuote, stepScript, tabCreateArgs } from './needs.js';
+import {
+  batchScript,
+  needsMissing,
+  parseNeeds,
+  rootPane,
+  shellQuote,
+  stepScript,
+  tabCreateArgs,
+} from './needs.js';
 import { initialState, loaded, press, render } from './view.js';
 
 const run = promisify(execFile);
@@ -47,14 +55,23 @@ async function workspace() {
   return JSON.parse(stdout).result.snapshot.focused_workspace_id ?? '';
 }
 
-async function launch({ need, step, command, root }) {
+async function openTab({ name, script, cwd, label }) {
   const dir = mkdtempSync(join(tmpdir(), 'pullboard-needs-'));
-  const script = join(dir, 'step.zsh');
-  writeFileSync(script, stepScript({ need, step, command, root, self: dir }), { mode: 0o600 });
+  const file = join(dir, name);
+  writeFileSync(file, script(dir), { mode: 0o600 });
   chmodSync(dir, 0o700);
-  const label = `needs: ${step.label ?? need.title}`.slice(0, 40);
-  const created = await run(HERDR, tabCreateArgs({ workspace: await workspace(), cwd: step.cwd, label }));
-  await run(HERDR, ['pane', 'run', rootPane(created.stdout), `/bin/zsh ${shellQuote(script)}`]);
+  const created = await run(HERDR, tabCreateArgs({ workspace: await workspace(), cwd, label: label.slice(0, 40) }));
+  await run(HERDR, ['pane', 'run', rootPane(created.stdout), `/bin/zsh ${shellQuote(file)}`]);
+}
+
+function launch({ need, step, command, root }) {
+  const script = (self) => stepScript({ need, step, command, root, self });
+  return openTab({ name: 'step.zsh', script, cwd: step.cwd, label: `needs: ${step.label ?? need.title}` });
+}
+
+function launchBatch({ items, root }) {
+  const script = (self) => batchScript({ items, root, self });
+  return openTab({ name: 'batch.zsh', script, cwd: items[0].step.cwd, label: `needs: ${items.length} steps` });
 }
 
 const NAMED = { '\r': 'enter', '\n': 'enter', '\x1b': 'escape', '\x7f': 'backspace', '\b': 'backspace', '\x15': 'ctrl+u', '\x03': 'ctrl+c',
@@ -93,6 +110,10 @@ async function main() {
       if (result.effect?.run) {
         try { await launch(result.effect.run); return close(); }
         catch (error) { state = { ...state, mode: 'note', note: `Could not open the step's tab: ${String(error.stderr || error.message).split('\n')[0]}` }; }
+      }
+      if (result.effect?.batch) {
+        try { await launchBatch(result.effect.batch); return close(); }
+        catch (error) { state = { ...state, mode: 'note', note: `Could not open the batch's tab: ${String(error.stderr || error.message).split('\n')[0]}` }; }
       }
     }
     draw();

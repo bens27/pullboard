@@ -1,8 +1,8 @@
 # Pullboard: needs you (Herdr TUI plugin)
 
 A Herdr popup listing what needs you on one Pullboard board. It reads `pullboard needs --json`
-in the board's folder, and runs each step of a need in order, in a new tab of the workspace
-you were in. It never writes the board itself: an ask's step is marked done by the tab's script
+in the board's folder, and runs each step of a need in order, or a batch of selected needs, in a
+new tab of the workspace you were in. It never writes the board itself: an ask's step is marked done by the tab's script
 with `pullboard ask done <id> --step <n> --as person` after its command exits 0, so agents pick
 it up at their next check and are never interrupted. A step with a prompt must use it as a bare
 word, with only letters, digits, spaces and `_ . / : @ % + , = -` around it, and each answer
@@ -33,6 +33,16 @@ folder instead:
 Press `prefix+y` (or the key you chose). In the list, `j`/`k` or the arrows move, `enter` opens
 a need, `r` refreshes and `q` quits. In a need, `enter` starts the next step: fill in any
 prompts, confirm with `y`, and the step runs in a new tab that stays open. `b` goes back.
+
+To run several needs at once, press `space` on each in the list: `[x]` marks a selected need,
+`[ ]` one you can select, and `[-]` one you cannot, with the reason under the list when it is
+highlighted (no step to run now, or a step the placeholder rule refuses). A selected ask brings
+all its remaining steps; a board need brings its next step. Then `r` or `enter` runs the
+selection: answer every prompt of every step in list order, read the one numbered screen of
+commands and folders, and press `y` to run them all, or `n`/`esc` at any point to run nothing.
+They run in order in one new tab that stays open: each ask step is marked done after it exits 0,
+the first step that fails stops the rest, and a summary says which steps were done, failed or not
+run. With nothing selected, `enter` opens a need and `r` refreshes as before.
 
 ## Environment
 

@@ -1,13 +1,19 @@
 /**
  * The "Needs you" popup as pure state: a key press moves the state and may ask the panel for an
- * effect (quit, refresh or run a step), and render draws a state as lines [B26]. Keeping the screen
+ * effect (quit, refresh, run a step or run a batch), and render draws a state as lines [B26]. Keeping the screen
  * logic free of the terminal lets tests prove that only a need's next step can ever run.
  */
-import { fillCommand, nextStep, stepState } from './needs.js';
+import {
+  batchRefusal,
+  batchSteps,
+  fillCommand,
+  nextStep,
+  stepState,
+} from './needs.js';
 
 /** @returns {any} */
 export function initialState() {
-  return { mode: 'loading', needs: [], root: '', cursor: 0, need: null, step: null, promptIndex: 0, values: {}, input: '', command: '', note: '' };
+  return { mode: 'loading', needs: [], root: '', cursor: 0, need: null, step: null, promptIndex: 0, values: {}, input: '', command: '', note: '', selected: [], batch: null, scroll: 0 };
 }
 
 /**
@@ -21,7 +27,9 @@ export function loaded(state, read) {
   if ('note' in read) return { ...state, mode: 'note', needs: [], note: read.note };
   const id = state.needs[state.cursor]?.id;
   const kept = read.needs.findIndex((need) => need.id === id);
-  return { ...state, mode: 'list', needs: read.needs, root: read.root, cursor: Math.max(0, kept), need: null, step: null };
+  // A need that left the board or can no longer run safely drops out of the selection.
+  const selected = state.selected.filter((sel) => read.needs.some((need) => need.id === sel && !batchRefusal(need)));
+  return { ...state, mode: 'list', needs: read.needs, root: read.root, cursor: Math.max(0, kept), need: null, step: null, selected, batch: null };
 }
 
 function beginStep(state) {
@@ -49,6 +57,7 @@ function confirm(state) {
 }
 
 function promptKey(state, key) {
+  if (state.batch) return batchPromptKey(state, key);
   const prompts = state.step.prompts;
   if (key === 'escape') return { state: { ...state, mode: 'need', step: null } };
   if (key === 'enter') {
@@ -57,23 +66,86 @@ function promptKey(state, key) {
     if (promptIndex >= prompts.length) return { state: confirm({ ...state, values }) };
     return { state: { ...state, values, promptIndex, input: prompts[promptIndex].default ?? '' } };
   }
+  return editKey(state, key);
+}
+
+function editKey(state, key) {
   if (key === 'backspace') return { state: { ...state, input: [...state.input].slice(0, -1).join('') } };
   if (key === 'ctrl+u') return { state: { ...state, input: '' } };
   if ([...key].length === 1) return { state: { ...state, input: state.input + key } };
   return { state };
 }
 
+function toggle(state) {
+  const need = state.needs[state.cursor];
+  if (batchRefusal(need)) return { state };
+  const on = state.selected.includes(need.id);
+  return { state: { ...state, selected: on ? state.selected.filter((id) => id !== need.id) : [...state.selected, need.id] } };
+}
+
+function startBatch(state) {
+  const items = batchSteps(state.needs, state.selected).map(({ need, step }) => ({ need, step, values: {} }));
+  if (!items.length) return { state };
+  return { state: askNext({ ...state, batch: { items, index: 0, promptIndex: 0 } }) };
+}
+
+// Every prompt of every step is asked before the one confirm, so nothing runs on a half-answered batch.
+function askNext(state) {
+  let { index, promptIndex } = state.batch;
+  const { items } = state.batch;
+  while (index < items.length && promptIndex >= (items[index].step.prompts ?? []).length) { index += 1; promptIndex = 0; }
+  if (index >= items.length) return confirmBatch(state);
+  const prompt = items[index].step.prompts[promptIndex];
+  return { ...state, mode: 'prompt', batch: { ...state.batch, index, promptIndex }, input: prompt.default ?? '' };
+}
+
+function confirmBatch(state) {
+  const { items } = state.batch;
+  const filled = [];
+  for (const [index, item] of items.entries()) {
+    try { filled.push({ need: item.need, step: item.step, command: fillCommand(item.step, item.values) }); }
+    catch (error) {
+      return { ...state, mode: 'note', batch: null, note: `This step cannot run safely: [${index + 1}/${items.length}] ${error.message}` };
+    }
+  }
+  return { ...state, mode: 'batch', batch: { ...state.batch, filled }, scroll: 0 };
+}
+
+function batchPromptKey(state, key) {
+  if (key === 'escape') return { state: { ...state, mode: 'list', batch: null } };
+  if (key === 'enter') {
+    const { items, index, promptIndex } = state.batch;
+    const item = items[index];
+    const values = { ...item.values, [item.step.prompts[promptIndex].key]: state.input };
+    const updated = items.map((row, at) => (at === index ? { ...row, values } : row));
+    return { state: askNext({ ...state, batch: { ...state.batch, items: updated, promptIndex: promptIndex + 1 } }) };
+  }
+  return editKey(state, key);
+}
+
+function batchKey(state, key) {
+  if (key === 'y' || key === 'enter') {
+    const effect = { batch: { items: state.batch.filled, root: state.root } };
+    return { state: { ...state, mode: 'list', batch: null, selected: [] }, effect };
+  }
+  if (key === 'n' || key === 'escape') return { state: { ...state, mode: 'list', batch: null } };
+  if (key === 'down' || key === 'j') return { state: { ...state, scroll: state.scroll + 1 } };
+  if (key === 'up' || key === 'k') return { state: { ...state, scroll: Math.max(0, state.scroll - 1) } };
+  return { state };
+}
+
 /**
  * Apply one key. Keys are plain characters or the names `enter`, `escape`, `up`, `down`,
- * `backspace` and `ctrl+u`.
+ * `backspace` and `ctrl+u`; a space is ' '.
  *
  * @param {any} state
  * @param {string} key
- * @returns {{ state: any, effect?: 'quit' | 'refresh' | { run: { need: any, step: any, command: string, root: string } } }}
+ * @returns {{ state: any, effect?: 'quit' | 'refresh' | { run: { need: any, step: any, command: string, root: string } } | { batch: { items: { need: any, step: any, command: string }[], root: string } } }}
  */
 export function press(state, key) {
   if (state.mode === 'prompt') return promptKey(state, key);
   if (key === 'ctrl+c') return { state, effect: 'quit' };
+  if (state.mode === 'batch') return batchKey(state, key);
   if (state.mode === 'confirm') {
     if (key === 'y' || key === 'enter') {
       return { state: { ...state, mode: 'need' }, effect: { run: { need: state.need, step: state.step, command: state.command, root: state.root } } };
@@ -89,8 +161,11 @@ export function press(state, key) {
     return { state };
   }
   if (key === 'q' || key === 'escape') return { state, effect: 'quit' };
+  // With a selection, r and enter run it; with none they keep their single-need meaning.
+  if (state.mode === 'list' && state.selected.length && (key === 'r' || key === 'enter')) return startBatch(state);
   if (key === 'r') return { state, effect: 'refresh' };
   if (state.mode !== 'list' || !state.needs.length) return { state };
+  if (key === ' ') return toggle(state);
   const last = state.needs.length - 1;
   if (key === 'down' || key === 'j') return { state: { ...state, cursor: Math.min(last, state.cursor + 1) } };
   if (key === 'up' || key === 'k') return { state: { ...state, cursor: Math.max(0, state.cursor - 1) } };
@@ -107,6 +182,18 @@ function wrap(text, width) {
   }
   if (line) lines.push(line);
   return lines;
+}
+
+// The footer stays on screen however long the batch is, so the person can always confirm or cancel.
+function batchLines(state, rows) {
+  const { filled } = state.batch;
+  const body = [`Run these ${filled.length} steps in order in one new tab?`, ''];
+  filled.forEach(({ step, command }, index) => body.push(`  ${index + 1}. ${command}`, `     in ${step.cwd}`));
+  body.push('', 'Each ask step is marked done when it exits 0. The first step that fails stops the rest.', '');
+  const room = Math.max(0, rows - 1);
+  const scroll = Math.min(state.scroll, Math.max(0, body.length - room));
+  const more = body.length > room ? 'up/down scroll   ' : '';
+  return [...body.slice(scroll, scroll + room), `${more}y run all   n cancel`];
 }
 
 const MARK = { done: '[x]', next: '[>]', waiting: '[ ]' };
@@ -143,11 +230,21 @@ export function render(state, cols, rows) {
     lines = ['Needs you', ''];
     state.needs.forEach((need, index) => {
       const done = need.steps.filter((step) => step.done).length;
-      lines.push(`${index === state.cursor ? '>' : ' '} ${need.title}  [${need.kind ?? need.source}] ${done}/${need.steps.length}`);
+      const pick = batchRefusal(need) ? '[-]' : state.selected.includes(need.id) ? '[x]' : '[ ]';
+      lines.push(`${index === state.cursor ? '>' : ' '} ${pick} ${need.title}  [${need.kind ?? need.source}] ${done}/${need.steps.length}`);
     });
-    lines.push('', 'up/down choose   enter open   r refresh   q close');
+    const why = batchRefusal(state.needs[state.cursor]);
+    if (why) lines.push('', ...wrap(`Cannot select: ${why}`, width));
+    const count = state.selected.length;
+    lines.push('', count ? `up/down choose   space select   r/enter run selected (${count})   q close` : 'up/down choose   space select   enter open   r refresh   q close');
   } else if (state.mode === 'need') lines = needLines(state, width);
-  else if (state.mode === 'prompt') {
+  else if (state.mode === 'batch') return batchLines(state, rows).map((line) => [...line].slice(0, cols).join(''));
+  else if (state.mode === 'prompt' && state.batch) {
+    const { items, index, promptIndex } = state.batch;
+    const { need, step } = items[index];
+    const prompt = step.prompts[promptIndex];
+    lines = [`Run selected [${index + 1}/${items.length}]: ${need.title}`, '', `Step ${step.n}: ${step.label ?? ''}`, '', `${prompt.label ?? prompt.key}:`, `> ${state.input}_`, '', 'enter accept   esc cancel the run   ctrl+u clear'];
+  } else if (state.mode === 'prompt') {
     const prompt = state.step.prompts[state.promptIndex];
     lines = [state.need.title, '', `Step ${state.step.n}: ${state.step.label ?? ''}`, '', `${prompt.label ?? prompt.key}:`, `> ${state.input}_`, '', 'enter accept   esc cancel   ctrl+u clear'];
   } else {

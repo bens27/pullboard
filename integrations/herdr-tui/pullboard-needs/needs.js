@@ -141,6 +141,109 @@ export function stepScript({ need, step, command, root, self }) {
 }
 
 /**
+ * The steps a selected need adds to a batch: every remaining step of an ask, in order, since the
+ * person asked for the whole ask; a board need's one next step.
+ *
+ * @param {{ source?: string, next: number | null, steps: any[] }} need
+ * @returns {any[]}
+ */
+export function remainingSteps(need) {
+  const next = nextStep(need);
+  if (!next) return [];
+  if (need.source !== 'ask') return [next];
+  return need.steps.filter((step) => !step.done && step.n >= next.n).sort((a, b) => a.n - b.n);
+}
+
+/**
+ * Why a need cannot join a batch, or '' when it can: it needs a step to run, and every step it
+ * would add must pass the placeholder rule, so a batch never stops halfway on a refused template.
+ *
+ * @param {any} need
+ * @returns {string}
+ */
+export function batchRefusal(need) {
+  const steps = remainingSteps(need);
+  if (!steps.length) return 'it has no step to run now';
+  for (const step of steps) {
+    // Blank answers test the template alone; a default the person may still edit is judged at the run.
+    const blank = Object.fromEntries((step.prompts ?? []).map((prompt) => [prompt.key, '']));
+    try { fillCommand(step, blank); }
+    catch (error) { return `step ${step.n}: ${error.message}`; }
+  }
+  return '';
+}
+
+/**
+ * The steps of a batch in list order, whatever order the person selected them in; a need that
+ * cannot join a batch adds nothing.
+ *
+ * @param {any[]} needs
+ * @param {string[]} selected
+ * @returns {{ need: any, step: any }[]}
+ */
+export function batchSteps(needs, selected) {
+  const chosen = new Set(selected);
+  return needs
+    .filter((need) => chosen.has(need.id) && !batchRefusal(need))
+    .flatMap((need) => remainingSteps(need).map((step) => ({ need, step })));
+}
+
+/**
+ * The zsh script one new tab runs for a batch. Each step runs as a single run does, in its own
+ * folder and a subshell, from commands fillCommand already built; the first failure stops the
+ * rest, so a later step never runs on top of an earlier one that did not happen.
+ *
+ * @param {{ items: { need: any, step: any, command: string }[], root: string, self: string }} input
+ * @returns {string}
+ */
+export function batchScript({ items, root, self }) {
+  const total = items.length;
+  const tag = (k) => `[${k}/${total}]`;
+  const lines = [`rm -rf -- ${shellQuote(self)}`, 'stopped=0', 'first=0'];
+  items.forEach((_, index) => lines.push(`st_${index + 1}='not run'`));
+  items.forEach(({ need, step, command }, index) => {
+    const k = index + 1;
+    const label = step.label ?? need.title;
+    lines.push(
+      'if [ $stopped -eq 0 ]; then',
+      'echo',
+      `print -r -- ${shellQuote(`${tag(k)} ${label}  (in ${step.cwd})`)}`,
+      `if cd -- ${shellQuote(step.cwd)}; then`,
+      `print -r -- ${shellQuote(`$ ${command}`)}`,
+      `(
+${command}
+)`,
+      'rc=$?',
+      'else',
+      `print -r -- ${shellQuote(`[cannot enter ${step.cwd}]`)}`,
+      'rc=1',
+      'fi',
+      'if [ $rc -eq 0 ]; then',
+      `st_${k}=done`,
+    );
+    if (need.source === 'ask') {
+      const done = `pullboard ask done ${shellQuote(askId(need))} --step ${shellQuote(String(step.n))} --as person`;
+      lines.push(`(cd -- ${shellQuote(root)} && ${done}) || echo '[could not record the step done; run: ${done.replaceAll("'", '')}]'`);
+    }
+    lines.push(
+      'else',
+      `st_${k}="failed (exit $rc)"`,
+      'stopped=1',
+      'first=$rc',
+      `echo ${shellQuote(`stopped at ${tag(k)}: exit `)}"$rc"'; later steps not run'`,
+      'fi',
+      'fi',
+    );
+  });
+  lines.push('echo');
+  items.forEach(({ need, step }, index) => {
+    lines.push(`print -r -- ${shellQuote(`${tag(index + 1)} ${step.label ?? need.title}: `)}"$st_${index + 1}"`);
+  });
+  lines.push('exit $first');
+  return lines.join('\n') + '\n';
+}
+
+/**
  * The two Herdr calls that start a step: a tab in the person's workspace at the step's folder, then
  * the script run in that tab's own shell, which stays open afterwards.
  *
