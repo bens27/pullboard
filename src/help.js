@@ -147,7 +147,8 @@ Work
                                         --brief "<brief>"; --route strong|mid|light; only the coordinator sets --check "<command>"
   pullboard ask "<title>" --step "<label>::<command>" [--step ...] [--why "<text>"] [--cwd <dir>] [--person-only]
                                         file steps for the person to run in order; {key} in a command becomes a prompt
-  pullboard ask done <id> [--step <n>] [--note "<text>"]   mark a step done; the last step closes the ask
+  pullboard ask done <id> [--step <n>] [--note "<text>"] [--as person]
+                                        mark the next step done; the last closes the ask; a --person-only ask takes --as person
   pullboard ask drop <id> --reason "<why>"  withdraw an ask (its filer or the coordinator); the filer hears at next inbox
   pullboard needs [--json]              everything waiting on the person, each with the commands to run in order
   pullboard show <id> [--history]       an item, the criterion frozen at claim, its verdicts: the latest in full,

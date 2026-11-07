@@ -103,7 +103,7 @@ function tellFiler(board, row, by, text) {
 }
 
 /** File, finish one step of, or drop an ask; the board keeps every record. */
-export function recordAsk(board, { agentId, action, ask, id, step, note, reason }) {
+export function recordAsk(board, { agentId, action, ask, id, step, note, reason, asPerson = false, channel = 'terminal' }) {
   return atomic(board, () => {
     if ((board.executionEngineVersion ?? ENGINE_VERSION) < ASK_ENGINE) {
       throw new Refused('ENGINE_VERSION', `asks require engine ${ASK_ENGINE}; upgrade Pullboard`);
@@ -122,14 +122,24 @@ export function recordAsk(board, { agentId, action, ask, id, step, note, reason 
     if (!row) throw new Refused('NO_ASK', `no ask ${id}; see pullboard needs`);
     if (row.status !== 'open') throw new Refused('ASK_CLOSED', `ask ${id} is already ${row.status}`);
     if (action === 'done') {
+      if (asPerson && (agentId !== COORDINATOR || !['terminal', 'view'].includes(channel))) {
+        throw new Refused('B26_PERSON_ANSWER', 'only the main checkout marks an ask done as the person, in their own terminal or the view');
+      }
+      const by = asPerson ? PERSON : agentId;
+      if (row.personOnly && by !== PERSON) {
+        throw new Refused('ASK_PERSON_ONLY', `ask ${id} is the person's alone; they mark it done at the main checkout: pullboard ask done ${id} --as person`);
+      }
+      if (![row.from, COORDINATOR, PERSON].includes(by)) {
+        throw new Refused('ASK_NOT_FILER', 'only the seat that filed an ask, the coordinator or the person marks its steps done');
+      }
       const index = step ?? row.steps.find(entry => !entry.done).n;
       if (!Number.isSafeInteger(index) || !row.steps[index - 1] || row.steps[index - 1].done
           || typeof (note ?? '') !== 'string' || LINE.test(note ?? '')) {
         throw new Refused('BAD_ASK', `name a step of ask ${id} that is not done yet, with an optional one-line --note`);
       }
-      logEvent(board, agentId, 'ask', null, { action, id, step: index, ...(note?.trim() ? { note: note.trim() } : {}), engine: ASK_ENGINE });
+      logEvent(board, by, 'ask', null, { action, id, step: index, ...(note?.trim() ? { note: note.trim() } : {}), ...(asPerson ? { channel } : {}), engine: ASK_ENGINE });
       const done = asks(board).find(entry => entry.id === id);
-      if (done.status === 'done') tellFiler(board, done, agentId, `Ask ${id} done: ${done.title}${note?.trim() ? `\nNote: ${note.trim()}` : ''}`);
+      if (done.status === 'done') tellFiler(board, done, by, `Ask ${id} done: ${done.title}${note?.trim() ? `\nNote: ${note.trim()}` : ''}`);
       return done;
     }
     if (action === 'drop') {

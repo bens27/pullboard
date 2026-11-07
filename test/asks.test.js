@@ -44,13 +44,13 @@ test('a seat files an ask, the person finishes it step by step, and the filer he
   assert.deepEqual(ask.steps.map(step => [step.n, step.cwd, step.personOnly, step.done]), [[1, box.repo, true, false], [2, box.repo, true, false]]);
   assert.match(run(box, box.repo, 'needs'), new RegExp(String.raw`ask:${id} {2}Rotate the deploy key {2}\(from .+\)\n {2}step 1/2: ssh-keygen -f \{path\}`, 'u'));
 
-  run(box, box.repo, 'ask', 'done', id, '--note', 'made it');
+  run(box, box.repo, 'ask', 'done', id, '--note', 'made it', '--as', 'person');
   needs = run(box, box.repo, 'needs', '--json');
   assert.equal(needs.needs.find(need => need.id === `ask:${id}`).next, 2);
   assert.deepEqual(shoutsTo(box, web), [], 'a step done is not news for the filer');
 
   assert.equal(box.run(box.repo, 'ask', 'done', id, '--step', '1').code, 1, 'a done step cannot be done again');
-  run(box, box.repo, 'ask', 'done', `ask:${id}`, '--step', '2');
+  run(box, box.repo, 'ask', 'done', `ask:${id}`, '--step', '2', '--as', 'person');
   needs = run(box, box.repo, 'needs', '--json');
   assert.equal(needs.needs.some(need => need.id === `ask:${id}`), false, 'a finished ask leaves the list');
   assert.deepEqual(shoutsTo(box, web), [`Ask ${id} done: Rotate the deploy key`]);
@@ -126,4 +126,24 @@ test('an ask keeps the random id its command chose, and the move refuses a malfo
       assert.throws(() => recordAsk(board, { agentId: store.PERSON, action: 'file', id, ask }), { code: 'BAD_ASK' }, String(id));
     }
   } finally { store.closeBoard(board); }
+});
+
+test('the person alone finishes a person-only ask; the filer, coordinator or person finishes any other [B26]', () => {
+  const box = helpers.project('true');
+  const other = join(box.dir, 'second');
+  box.git(box.repo, 'worktree', 'add', '-q', '--detach', other, 'HEAD');
+  run(box, other, 'join', 'api', '--model', 'fixture-asks');
+  const code = (cwd, ...args) => JSON.parse(box.run(cwd, ...args, '--json').out).error?.code ?? 'ok';
+  const only = run(box, box.web, 'ask', 'Mine', '--step', 'A::true', '--step', 'B::true', '--step', 'C::true', '--person-only', '--json').ask.id;
+  assert.equal(code(box.web, 'ask', 'done', only), 'ASK_PERSON_ONLY', 'the filer is not the person');
+  assert.equal(code(box.repo, 'ask', 'done', only), 'ASK_PERSON_ONLY', 'the coordinator is not the person');
+  assert.equal(code(other, 'ask', 'done', only, '--as', 'person'), 'B26_PERSON_ANSWER', 'only the main checkout acts as the person');
+  const done = run(box, box.repo, 'ask', 'done', only, '--as', 'person', '--json').ask;
+  assert.equal(done.steps[0].doneBy, store.PERSON);
+  const open = run(box, box.web, 'ask', 'Any', '--step', 'A::true', '--step', 'B::true', '--step', 'C::true', '--json').ask.id;
+  assert.equal(code(other, 'ask', 'done', open), 'ASK_NOT_FILER');
+  const steps = [run(box, box.web, 'ask', 'done', open, '--json'), run(box, box.repo, 'ask', 'done', open, '--json'),
+    run(box, box.repo, 'ask', 'done', open, '--as', 'person', '--json')].map(result => result.ask);
+  assert.equal(steps.at(-1).status, 'done');
+  assert.deepEqual(steps.at(-1).steps.map(step => step.doneBy), [steps[0].from, 'coordinator', store.PERSON]);
 });

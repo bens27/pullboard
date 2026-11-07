@@ -517,7 +517,7 @@ export function checkMainVerifier(ctx, board, values) {
  */
 export function personMode(ctx, me, values) {
   if (values.as === undefined) return false;
-  if (values.as !== 'person') throw new Refused('USAGE', '--as person is supported for answer, decisions, hold and fact --never-again');
+  if (values.as !== 'person') throw new Refused('USAGE', '--as person is supported for answer, decisions, hold, fact --never-again and ask done');
   if (!ctx.info.isMain || me.id !== COORDINATOR) {
     throw new Refused('B26_PERSON_ANSWER', 'only the main checkout can act as the person; ask your coordinator to answer or pass this decision');
   }

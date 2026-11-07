@@ -5,6 +5,8 @@ import {
   resolve,
 } from 'node:path';
 import { Refused } from '../refused.js';
+import { requirePersonChannel } from '../person.js';
+import { requireSignedPerson } from '../person-signing-cli.js';
 import {
   ASK_ID,
   parseAskStep,
@@ -12,6 +14,7 @@ import {
 import {
   actOn,
   ordered,
+  personMode,
 } from '../cli.js';
 
 /** The main checkout, where the person's own terminal and the panels run commands by default. */
@@ -45,7 +48,15 @@ export async function run(io, { first, second, rest, values }) {
   return actOn(io, async (ctx, board, me) => {
     let row;
     if (first === 'done') {
-      row = await ordered(ctx, board, 'recordAsk', [{ agentId: me.id, action: 'done', id: askId(second), step: stepNumber(values), note: values.note }]);
+      // A person-only ask closes only as the person: the main checkout with --as person, or the view [B26].
+      const asPerson = io.personChannel === 'view' || personMode(ctx, me, values);
+      if (asPerson) {
+        const confirmed = await requireSignedPerson(ctx, board, me, null);
+        if (confirmed !== null) return confirmed;
+        requirePersonChannel(io.personChannel);
+      }
+      row = await ordered(ctx, board, 'recordAsk', [{ agentId: me.id, action: 'done', id: askId(second), step: stepNumber(values), note: values.note,
+        asPerson, channel: io.personChannel ?? 'terminal' }]);
     } else if (first === 'drop') {
       row = await ordered(ctx, board, 'recordAsk', [{ agentId: me.id, action: 'drop', id: askId(second), reason: values.reason }]);
     } else {

@@ -14,5 +14,6 @@ export default Object.freeze({ operation: 'recordAsk', engine: ASK_ENGINE,
     NO_ASK: 'list the open asks with pullboard needs',
     ASK_CLOSED: 'this ask is already finished or dropped; read pullboard needs for the open ones',
     ASK_QUOTED_PLACEHOLDER: 'write each {key} as a bare word outside quotes, with no " ` \\ or $( in that step, e.g. --note {note}',
-    ASK_NOT_FILER: 'only the seat that filed the ask or the coordinator drops it; shout the coordinator',
+    ASK_NOT_FILER: 'only the seat that filed the ask, the coordinator or the person closes it; shout the coordinator',
+    ASK_PERSON_ONLY: 'the person marks it done in their own terminal at the main checkout: pullboard ask done <id> --as person',
   }) });
