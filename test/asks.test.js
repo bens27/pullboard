@@ -76,7 +76,7 @@ test('only the filer or the coordinator drops an ask, with a reason [B26]', () =
 });
 
 test('board needs map to their commands with prompts, decisions once, and spec apply [B26,N26]', () => {
-  const needs = needsList({ root: '/repo',
+  const needs = needsList({ root: '/repo', signer: 'BS',
     needs: [
       { kind: 'signoff', id: 'G9', text: 'Signed rows (verified: #3)', what: 'pullboard spec signoff G9 --note "<what you checked>"' },
       { kind: 'decision', id: 12, text: 'Ship it?\nmore', at: '2026-11-07T00:00:00.000Z' },
@@ -88,8 +88,9 @@ test('board needs map to their commands with prompts, decisions once, and spec a
     openDecisions: [{ id: 20, asker: 'web-1', question: 'Which port?' }] });
   assert.deepEqual(needs.map(need => need.id), ['signoff:G9', 'decision:12', 'hold:web', 'verify:4', 'decision:13', 'apply', 'question:20']);
   const [signoff, decision, hold, verify] = needs;
-  assert.deepEqual(signoff.steps, [{ n: 1, label: 'Sign G9', command: 'pullboard spec signoff G9 --note {note}', cwd: '/repo',
-    prompts: [{ key: 'note', label: 'What you checked', default: '' }], personOnly: true, done: false }]);
+  assert.deepEqual(signoff.steps, [{ n: 1, label: 'Sign G9', command: 'pullboard spec signoff G9 --by {by} --note {note}', cwd: '/repo',
+    prompts: [{ key: 'by', label: 'Your initials', default: 'BS' }, { key: 'note', label: 'What you checked', default: '' }],
+    personOnly: true, done: false }], 'a sign-off names its signer, filled from the last one');
   assert.equal(decision.title, 'Ship it?');
   assert.equal(decision.steps[0].command, 'pullboard answer 12 {answer} --as person');
   assert.equal(hold.steps[0].personOnly, false);

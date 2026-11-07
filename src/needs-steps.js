@@ -7,7 +7,7 @@ function step(label, command, cwd, personOnly = true) {
 }
 
 /** Name the prompts the board's own commands take in words the person reads. */
-const PROMPT_LABELS = { note: 'What you checked', answer: 'Your answer' };
+const PROMPT_LABELS = { note: 'What you checked', answer: 'Your answer', by: 'Your initials' };
 
 /** Label known prompts, keeping unknown keys readable as they are. */
 function labelled(entry) {
@@ -16,7 +16,13 @@ function labelled(entry) {
 }
 
 /** One board need; kinds without a single command stay readable with no steps. */
-function boardNeed(need, root) {
+// Sign-off refuses without --by, so the step asks for it, offering whoever signed last.
+function signerDefault(entry, signer) {
+  for (const prompt of entry.prompts) if (prompt.key === 'by') prompt.default = signer;
+  return entry;
+}
+
+function boardNeed(need, root, signer = '') {
   const id = String(need.id);
   const base = { id: `${need.kind}:${id.replace(new RegExp(`^${need.kind}:`, 'u'), '')}`, kind: need.kind, source: 'board',
     title: String(need.text ?? '').split('\n')[0], why: need.what && !String(need.what).startsWith('pullboard ') ? String(need.what) : '',
@@ -28,7 +34,7 @@ function boardNeed(need, root) {
     'spec-revision': () => [step(`Approve ${need.id}`, `pullboard spec approve ${need.id}`, root)],
     'agent-approved': () => [step(`Confirm ${need.id}`, `pullboard spec approve ${need.id}`, root)],
     'sentinel-draft': () => [step(`Approve watch ${need.ref}`, `pullboard sentinel approve ${need.ref}`, root)],
-    signoff: () => [step(`Sign ${need.id}`, `pullboard spec signoff ${need.id} --note {note}`, root)],
+    signoff: () => [signerDefault(step(`Sign ${need.id}`, `pullboard spec signoff ${need.id} --by {by} --note {note}`, root), signer)],
   };
   // A revision the person already approved waits only for spec apply, which the apply need carries.
   const steps = need.kind === 'spec-revision' && need.actions?.length === 0 ? [] : commands[need.kind]?.() ?? [];
@@ -44,8 +50,8 @@ function askNeed(row) {
 }
 
 /** The whole list: person needs first, then rows waiting to be written, coordinator questions and open asks. */
-export function needsList({ needs = [], pendingApply = [], openDecisions = [], personQuestions = [], asks = [], root }) {
-  const list = needs.map(need => boardNeed(need, root));
+export function needsList({ needs = [], pendingApply = [], openDecisions = [], personQuestions = [], asks = [], root, signer = '' }) {
+  const list = needs.map(need => boardNeed(need, root, signer));
   const decided = new Set(needs.filter(need => need.kind === 'decision').map(need => String(need.id)));
   for (const ask of personQuestions) {
     if (decided.has(String(ask.id))) continue;
