@@ -12,7 +12,10 @@ import {
   createHash,
   randomUUID,
 } from 'node:crypto';
-import { requirePersonChannel } from './person.js';
+import {
+  requirePersonChannel,
+  requireRelayOnChannel,
+} from './person.js';
 import {
   gitConfig,
   repoInfo,
@@ -177,6 +180,10 @@ export function blockOwner(audience, info) {
   return audience === 'agent' ? key({ audience, seat: info.root }) : audience;
 }
 
+function personRelayOn(channel, environment) {
+  try { requireRelayOnChannel(channel, environment); return true; } catch { return false; }
+}
+
 /** Record only the matching completed move's clear, leaving later or unrelated blocks intact. */
 export function clearCompletedBlocks(io, now = io.clock?.now?.() ?? new Date()) {
   let info;
@@ -185,13 +192,15 @@ export function clearCompletedBlocks(io, now = io.clock?.now?.() ?? new Date()) 
   if (!moveKeys.length) return;
   const owners = new Set([blockOwner('agent', info)]);
   if (info.isMain) owners.add('coordinator');
-  try { requirePersonChannel(io.personChannel); owners.add('person'); } catch { /* An agent's success cannot clear a person's block. */ }
+  const environment = io.environment ?? process.env;
+  try { requirePersonChannel(io.personChannel, environment); owners.add('person'); } catch { /* An agent's success cannot clear a person's block. */ }
   const caller = io.callerRole?.();
   const runner = caller === 'person' ? 'person' : info.isMain ? 'coordinator' : 'agent';
   // A person block records whom it stopped and what; once that checkout completes that exact command, nothing stops it any more.
   const unstopped = block => block.by === runner && block.path === info.root && stoppedBy(block, io);
   // Relay on reissues the coordinator's token, so every block an expired token raised is moot.
-  const reissued = owners.has('person') && io.relayCommand?.cliOperation === 'relay' && io.relayCommand.positionals?.[0] === 'on';
+  // Relay on admits the person's SSH device sign-in, so its success is judged by relay on's own channel rule.
+  const reissued = io.relayCommand?.cliOperation === 'relay' && io.relayCommand.positionals?.[0] === 'on' && personRelayOn(io.personChannel, environment);
   try {
     const expired = block => reissued && block.code === 'TOKEN_EXPIRED' && block.owner === 'person';
     const cleared = readBlocks(info.commonDir).filter(block => block.id && Date.parse(block.at) <= now.getTime()

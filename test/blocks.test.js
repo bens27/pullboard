@@ -153,6 +153,15 @@ test('a hashless person block waits for relay on; relay on clears only expired-t
   clearCompletedBlocks(io(['on'], 'relay', 'view'), new Date('2026-11-07T20:05:00.000Z'));
   assert.deepEqual(readBlocks(info.commonDir).map(row => row.code), ['HUMAN_REQUIRED'],
     'relay on reissues the coordinator token, clearing every expired-token block and nothing else');
+
+  // Relay on lets the person sign in over SSH by device code, so its cleanup follows relay on's own channel rule.
+  const ssh = (environment) => ({ ...io(['on'], 'relay', 'terminal'), environment });
+  block('2026-11-07T20:06:00.000Z');
+  clearCompletedBlocks(ssh({ SSH_CONNECTION: '10.0.0.2 50000 10.0.0.1 22', CLAUDECODE: '1' }), new Date('2026-11-07T20:07:00.000Z'));
+  assert.equal(readBlocks(info.commonDir).length, 2, 'an agent shell over SSH reissues nothing');
+  clearCompletedBlocks(ssh({ SSH_CONNECTION: '10.0.0.2 50000 10.0.0.1 22' }), new Date('2026-11-07T20:08:00.000Z'));
+  assert.deepEqual(readBlocks(info.commonDir).map(row => row.code), ['HUMAN_REQUIRED'],
+    'the person\'s relay on over SSH clears the expired-token block');
 });
 
 test('a runner clears its person block only by completing the exact command it was stopped on [B26]', () => {
