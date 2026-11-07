@@ -10,6 +10,7 @@ import { pendingRowApply } from '../resume.js';
 import { readRawRecords } from '../signature.js';
 import { resumeNeeds } from '../resume-needs.js';
 import { staleRowDecisions } from '../row-decision-state.js';
+import { loadConfig } from '../config.js';
 import { mainRoot } from './ask.js';
 
 /** Who signed this repo's last sign-off, to offer as the next signer; none when the ledger is missing or unreadable. */
@@ -26,11 +27,14 @@ function lastSigner(root) {
 export async function run(io) {
   const ctx = context(io);
   const root = mainRoot(ctx.info);
+  // Every step runs in the main checkout, so its rows and config decide what to offer;
+  // a lagging worktree's SPEC.md would offer stale or unknown ids.
+  const config = ctx.info.isMain ? ctx.config : loadConfig(root);
   const needs = await withBoardRead(ctx, (board) => {
     const sections = coordinatorDecisionSections(board, ctx);
     const decisions = store.rowDecisions(board);
-    return needsList({ root, needs: resumeNeeds(ctx.info.root, { board, config: ctx.config }).needs,
-      pendingApply: pendingRowApply(decisions, staleRowDecisions(decisions, ctx.info.root, ctx.config)),
+    return needsList({ root, needs: resumeNeeds(root, { board, config }).needs,
+      pendingApply: pendingRowApply(decisions, staleRowDecisions(decisions, root, config)),
       openDecisions: sections.openDecisions, personQuestions: sections.personQuestions, asks: store.asks(board),
       signer: lastSigner(root) });
   });

@@ -153,3 +153,24 @@ test('only materialized Rigor proposals need the person while coordinator work s
   const browserBuilder = runInNewContext(`(${personNeeds.toString()})`);
   assert.deepEqual(JSON.parse(JSON.stringify(browserBuilder(state))), personNeeds(state), 'browser and server share the exact filter');
 });
+
+test('needs reads draft rows from the main checkout its steps run in [B26]', async (t) => {
+  const e2e = createE2eHelpers();
+  t.after(e2e.cleanup);
+  const box = e2e.project('true');
+  const base = readFileSync(join(box.repo, 'SPEC.md'), 'utf8');
+  writeFileSync(join(box.repo, 'SPEC.md'), `${base}- G6 [draft, aim] Main's own draft.\n- G7 [approved, aim] Main approved this already.\n`);
+  box.git(box.repo, 'add', 'SPEC.md');
+  box.git(box.repo, 'commit', '-q', '-m', 'chore: main drafts and approves');
+  // A worktree lagging behind main: it still holds G7 as a draft and has a draft main never saw.
+  writeFileSync(join(box.web, 'SPEC.md'), `${base}- G7 [draft, aim] Stale draft text.\n- G8 [draft, aim] Only in this worktree.\n`);
+  const listed = box.run(box.web, 'needs', '--json');
+  assert.equal(listed.code, 0, listed.err || listed.out);
+  const result = JSON.parse(listed.out);
+  assert.equal(result.root, box.repo, 'steps run from the main checkout');
+  const drafts = result.needs.filter(need => /^(draft|decline):/u.test(need.id));
+  assert.deepEqual(drafts.map(need => [need.id, need.title, need.steps[0].cwd]), [
+    ['draft:G6', "Approve G6: Main's own draft.", box.repo],
+    ['decline:G6', "Decline G6: Main's own draft.", box.repo],
+  ], 'only the rows main holds as drafts get approve and decline steps');
+});
