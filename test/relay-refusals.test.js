@@ -152,6 +152,14 @@ test('relay status and pullboard status write no refusal fields and show every k
     assert.ok(text.stdout.includes('synthetic refusal of #7') && !text.stdout.includes('synthetic refusal of #2;'), 'the newest, not the oldest');
     assert.deepEqual(refusalFields(box.linkFile), saved, `${args.join(' ')} writes no refusal or cursor field`);
   }
+  // Five or fewer kept still get their count line.
+  seedLink(box.linkFile, { outboxRefusals: refused.slice(-2), outboxRefusalSeq: 7, outboxRefusalsTold: 3 });
+  for (const args of [['status'], ['relay', 'status']]) {
+    const text = await plain(t, box, ...args);
+    assert.equal(text.code, 0, text.stderr);
+    assert.match(text.stdout, /relay outbox: 2 replay refusals kept:/u, `${args.join(' ')} counts a short list too`);
+    assert.equal(text.stdout.match(REFUSED)?.length, 2, `${args.join(' ')} prints both`);
+  }
 });
 
 test('a kept refusal is pruned after 30 days and past 200 kept [H21,B26]', () => {
@@ -310,4 +318,60 @@ process.exit(0);
   assert.equal(pausedNow.outboxRefusalsTold, 1, 'a board that linked complete:false still printed, so it moves too');
   assert.deepEqual(waiting.outboxRefusals, waitingRefusals, 'the waiting board keeps its refusal');
   assert.equal(waiting.outboxRefusalsTold, undefined, 'and its cursor never moves');
+});
+
+test('relay on moves the told cursor only once stdout has handed on the refusals, and never when the write fails [H21,B26]', async (t) => {
+  const box = await relayClientFixture(t);
+  await box.link();
+  const refused = refusalsOn([1]);
+  const module = name => JSON.stringify(resolve(import.meta.dirname, '../src/' + name));
+  for (const json of [false, true]) {
+    const mode = json ? '--json' : 'text';
+    seedLink(box.linkFile, { outboxRefusals: refused, outboxRefusalsTold: undefined });
+    const run = await box.script(`
+import { readFileSync } from 'node:fs';
+import { Writable } from 'node:stream';
+import { main } from ${module('cli-main.js')};
+const told = () => JSON.parse(readFileSync(${JSON.stringify(box.linkFile)}, 'utf8')).outboxRefusalsTold;
+const argv = ['relay', 'on', '--url', ${JSON.stringify(box.origin)}, ...(${json} ? ['--json'] : [])];
+const stderr = { write() {} };
+// A slow pipe: it takes the refusal's bytes but holds their completion until released.
+let output = '';
+const held = [];
+let holding = true;
+const slow = new Writable({ write(chunk, encoding, done) {
+  output += chunk;
+  if (holding && output.includes('synthetic refusal of #1')) held.push(done); else done();
+} });
+const running = main(argv, { cwd: ${JSON.stringify(box.root)}, stdin: process.stdin, stdout: slow, stderr });
+const deadline = Date.now() + 20_000; // budget: hang ceiling for the relay on round trip.
+while (!held.length && Date.now() < deadline) await new Promise(wait => setTimeout(wait, 25));
+const returned = await Promise.race([running.then(() => true), new Promise(wait => setTimeout(() => wait(false), 500))]);
+const whileHeld = told();
+holding = false;
+for (const done of held.splice(0)) done();
+const code = await running;
+const afterRelease = told();
+// A broken pipe: every write fails, as EPIPE does when the reader is gone.
+const writeFile = ${JSON.stringify(box.linkFile)};
+const { writeFileSync } = await import('node:fs');
+const link = JSON.parse(readFileSync(writeFile, 'utf8'));
+delete link.outboxRefusalsTold;
+writeFileSync(writeFile, JSON.stringify(link) + '\\n', { mode: 0o600 });
+const broken = new Writable({ write(chunk, encoding, done) { done(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' })); } });
+broken.on('error', () => {});
+const brokenCode = await main(argv, { cwd: ${JSON.stringify(box.root)}, stdin: process.stdin, stdout: broken, stderr });
+process.stdout.write(JSON.stringify({ heldSeen: held.length === 0 && output.includes('synthetic refusal of #1'), returned, whileHeld, code, afterRelease, brokenCode, afterBroken: told() }));
+process.exit(0);
+`);
+    assert.equal(run.code, 0, run.failure);
+    const { heldSeen, returned, whileHeld, code, afterRelease, brokenCode, afterBroken } = run.document;
+    assert.ok(heldSeen, `${mode}: the refusal reached the slow pipe`);
+    assert.equal(returned, false, `${mode}: relay on waits for stdout to hand the refusal on`);
+    assert.equal(whileHeld, undefined, `${mode}: the cursor stays while the refusal is still held in the pipe`);
+    assert.equal(code, 0, `${mode}: relay on succeeds`);
+    assert.equal(afterRelease, 1, `${mode}: the cursor moves once the pipe took the refusal`);
+    assert.equal(typeof brokenCode, 'number', `${mode}: a broken pipe still ends the command`);
+    assert.equal(afterBroken, undefined, `${mode}: a failed write never counts as told`);
+  }
 });

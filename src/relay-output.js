@@ -30,7 +30,8 @@ export function outboxLines(state, { every = false } = {}) {
   }
   const refusals = state.outboxRefusals ?? [];
   const shown = every ? refusals : refusals.slice(-STATUS_REFUSALS);
-  if (shown.length < refusals.length) lines.push(`relay outbox: ${refusals.length} replay refusals kept; the newest ${shown.length}:`);
+  // A status read always says how many it keeps, so a short list is never mistaken for a cut one.
+  if (refusals.length && !every) lines.push(`relay outbox: ${refusals.length} replay ${refusals.length === 1 ? 'refusal' : 'refusals'} kept${shown.length < refusals.length ? `; the newest ${shown.length}` : ''}:`);
   for (const refused of shown) lines.push(refusalLine(refused));
   for (const { was, is } of state.outboxRenumbered ?? []) lines.push(`relay outbox: the item added here as #${was} while the relay was down is #${is} on the board`);
   return lines;
