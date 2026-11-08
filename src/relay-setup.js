@@ -49,6 +49,8 @@ import { relayOfferEnabled } from './settings.js';
 import { Refused } from './refused.js';
 import { publishExcludedBoards } from './relay-excluded.js';
 import { plannedRelayBoard } from './relay-relink.js';
+import { refusalLine } from './relay-outbox.js';
+import { advanceTold, untoldOf } from './relay-refusals-told.js';
 
 /** Say which paired phone must approve a new board's link, and when the request ends in this computer's time. */
 function approvalWait(name, pending, devices) {
@@ -212,8 +214,19 @@ export async function revokeRelayDevice(deviceId, io) {
   return revokeDeviceWithSignIn(device, io);
 }
 
+/**
+ * A linked board's entry for the --all result, saying its untold refusals: a quiet link prints no status lines, and
+ * --json drops said lines once a result exists, so the entry carries them too. `told` collects what was printed.
+ */
+function linkedBoard(project, root, result, io, told) {
+  const refusals = untoldOf(root, result.outboxRefusals);
+  for (const kept of refusals) io.say(refusalLine(kept));
+  if (refusals.length) told?.push({ root, refusals });
+  return { project, root, board: result.board, ...(refusals.length ? { outboxRefusals: refusals } : {}) };
+}
+
 /** Link non-excluded registry entries and report an explicit outcome for every registered project. */
-async function linkProjects(session, io, { onBoardOutcome, waiting = new Set() } = {}) {
+async function linkProjects(session, io, { onBoardOutcome, waiting = new Set(), told } = {}) {
   const machine = readRelayMachine();
   const linked = [];
   const failed = [];
@@ -228,9 +241,9 @@ async function linkProjects(session, io, { onBoardOutcome, waiting = new Set() }
     if (waiting.has(project.root)) continue;
     try {
       const result = await relayOn(project.root, session.url, io, { session, quiet: true, strict: true });
-      linked.push({ project: project.name, root: project.root, board: result.board });
       onBoardOutcome?.({ root: project.root, name: project.name, outcome: 'linked', reason: '' });
       io.say(`Linked ${project.name}.`);
+      linked.push(linkedBoard(project.name, project.root, result, io, told));
     } catch (error) {
       const reason = error instanceof Refused ? error.message : 'Restore this registered project and retry.';
       failed.push({ project: project.name, root: project.root, reason });
@@ -261,7 +274,7 @@ function waitingLinkApprovals(session) {
  * board in the same run. Without this wait the phone that just approved sees a board it cannot
  * read until the computer happens to run another command (walkthrough-090 issue 15).
  */
-async function waitForLinkApprovals(waiting, io, { signal } = {}) {
+async function waitForLinkApprovals(waiting, io, { signal, told } = {}) {
   const linked = [];
   const failed = [];
   const name = root => listApiProjects().find(project => project.root === root)?.name ?? root;
@@ -286,8 +299,8 @@ async function waitForLinkApprovals(waiting, io, { signal } = {}) {
           if (document.approval.state === 'expired') throw new Refused('PHONE_APPROVAL_EXPIRED', 'Link approval expired; run pullboard relay on --all to link this board.');
           if (document.approval.state !== 'approved') continue;
           const result = await finishApprovedLink(pending.root, pending, source, document.approval, io);
-          linked.push({ project, root: pending.root, board: result.board });
           io.say('linked: ' + project);
+          linked.push(linkedBoard(project, pending.root, result, io, told));
         } catch (error) {
           if (signal?.aborted && error.code === 'OAUTH_CANCELLED') break;
           const reason = error instanceof Refused ? error.message.replace(/^\[[A-Z][A-Z0-9_]*\] /u, '') : 'Restore this registered project and retry.';
@@ -400,7 +413,7 @@ async function pairFirstDevice(session, board, linked, io, { signal, onPairingUR
 }
 
 /** Explicit foreground sign-in repairs links; only board machine credentials survive this command. */
-export async function relayOnAll(address, io, { signal, onPairingURL, onSignIn, onLinking, onBoardOutcome, pairAdditional = false, name } = {}) {
+export async function relayOnAll(address, io, { signal, onPairingURL, onSignIn, onLinking, onBoardOutcome, pairAdditional = false, name, told } = {}) {
   const label = computerName(name);
   requirePersonChannel(io.personChannel);
   // A cancelled or declined sign-in must not migrate machine state or scrub existing board links.
@@ -430,12 +443,12 @@ export async function relayOnAll(address, io, { signal, onPairingURL, onSignIn, 
   const waiting = onPairingURL ? [] : waitingLinkApprovals(session);
   const waitingIds = new Set(waiting.map(entry => entry.context.id));
   updateRelayMachine(state => { state.autoLink = true; state.owner = { account: session.account, ...(session.login ? { login: session.login } : {}), url: session.url }; state.approvals = state.approvals.filter(entry => waitingIds.has(entry.context.id)); });
-  const result = await linkProjects(session, io, { onBoardOutcome, waiting: new Set(waiting.map(entry => entry.root)) });
+  const result = await linkProjects(session, io, { onBoardOutcome, waiting: new Set(waiting.map(entry => entry.root)), told });
   const devices = readRelayMachine().devices.filter(device => device.account === session.account && device.url === session.url);
   if (devices.length && !pairAdditional) io.say('Your phone is already paired; the linked boards appear there.');
   const pairing = (devices.length && !pairAdditional) || !result.linked.length ? { paired: devices.length > 0 }
     : await pairFirstDevice(session, result.linked[0].board, result.linked, io, { signal, onPairingURL, pairAdditional });
-  const approved = await waitForLinkApprovals(waiting, io, { signal });
+  const approved = await waitForLinkApprovals(waiting, io, { signal, told });
   result.linked.push(...approved.linked);
   result.failed.push(...approved.failed);
   await publishExcludedBoards(session, io, relayDeviceRequest);
@@ -458,9 +471,12 @@ export async function relayOnAllCommand(address, io, { pairAdditional = false, n
   process.once('SIGINT', cancelSignIn);
   process.once('SIGTERM', cancelSignIn);
   let result;
-  try { result = await relayOnAll(address, io, { signal: controller.signal, pairAdditional, name }); }
+  // Only boards whose refusals this run printed move their told cursor; a failed or still-waiting board keeps all.
+  const told = [];
+  try { result = await relayOnAll(address, io, { signal: controller.signal, pairAdditional, name, told }); }
   finally { process.off('SIGINT', cancelSignIn); process.off('SIGTERM', cancelSignIn); }
   io.result?.(result);
+  if (told.length) await (io.afterOutput ?? (work => work()))(async () => { for (const board of told) await advanceTold(board.root, board.refusals, io); });
   if (result.outcome) {
     io.say(result.outcome === 'declined' ? 'GitHub sign-in was declined; no boards were linked.'
       : result.outcome === 'expired' ? 'GitHub device sign-in expired; no boards were linked.'

@@ -58,6 +58,7 @@ import {
   refuseOversizedMove,
 } from './relay-move-size.js';
 import { compactHealthFindings } from './health-receipts.js';
+import { numberRefusals, recordRefusal } from './relay-refusals.js';
 import {
   outboxFile,
   outboxSummaryFile,
@@ -75,8 +76,8 @@ import {
   rememberCreatedItems,
 } from './relay-created-items.js';
 
-/** How many replay refusals the link keeps for pullboard status; older ones stay in the relay's own receipts. */
-const KEPT_REFUSALS = 20;
+/** How many renumbered-item notes the link keeps for pullboard status. */
+const KEPT_RENUMBERED = 20;
 
 /** Commands that already said their move waits in the outbox, so a command says it once. */
 const OUTBOX_NOTICES = new WeakSet();
@@ -170,8 +171,7 @@ export function earlierMoves(board, entry, sequence) {
 
 /** Keep one replay refusal on the link for pullboard status, newest last, and return its line. */
 export function keepRefusal(state, entry, refusal, earlier) {
-  const kept = { move: describeMove(entry.move), queuedAt: entry.queuedAt, code: refusal.code, message: refusal.message, earlier };
-  state.outboxRefusals = [...(state.outboxRefusals ?? []), kept].slice(-KEPT_REFUSALS);
+  const kept = recordRefusal(state, { move: describeMove(entry.move), queuedAt: entry.queuedAt, code: refusal.code, message: refusal.message, earlier });
   return refusalLine(kept);
 }
 
@@ -330,7 +330,7 @@ async function finishEntry(link, outbox, where, key) {
 /** The queued moves and replay refusals pullboard status shows, when there are any. */
 export function outboxFields(state) {
   return { ...(state?.outbox?.moves?.length ? { outbox: structuredClone(state.outbox.moves) } : {}),
-    ...(state?.outboxRefusals?.length ? { outboxRefusals: structuredClone(state.outboxRefusals) } : {}),
+    ...(state?.outboxRefusals?.length ? { outboxRefusals: numberRefusals(state) } : {}),
     ...(state?.outboxRenumbered?.length ? { outboxRenumbered: structuredClone(state.outboxRenumbered) } : {}) };
 }
 
@@ -585,7 +585,7 @@ function settle(link, outbox, entry, receipt) {
 /** Say once that an item this machine showed under one number now has another, and keep it for status. */
 function noteRenumbered({ state, io }, was, is) {
   if (!Number.isSafeInteger(was) || !Number.isSafeInteger(is) || is === was) return;
-  state.outboxRenumbered = [...(state.outboxRenumbered ?? []), { was, is }].slice(-KEPT_REFUSALS);
+  state.outboxRenumbered = [...(state.outboxRenumbered ?? []), { was, is }].slice(-KEPT_RENUMBERED);
   io.err(`pullboard: the item this machine showed as #${was} while the relay was down is #${is} on the board; its queued moves follow it`);
 }
 

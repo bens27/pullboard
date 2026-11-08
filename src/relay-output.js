@@ -18,25 +18,32 @@ export function briefLines(state) {
   return lines;
 }
 
-/** Name each move waiting in the relay outbox and each one refused when it replayed (#922). */
-export function outboxLines(state) {
+/** How many kept refusals a status read prints; its JSON and relay on carry every one. */
+const STATUS_REFUSALS = 5;
+
+/** Name each move waiting in the relay outbox and the refusals when they replayed: the newest few, or `every` one (#922,B26). */
+export function outboxLines(state, { every = false } = {}) {
   const lines = [];
   if (state.outbox?.length) {
     lines.push(`relay outbox: ${state.outbox.length} ${state.outbox.length === 1 ? 'move waits' : 'moves wait'} for the relay, sent in this order when it answers:`);
     for (const move of state.outbox) lines.push(`  ${describeMove({ operation: move.operation, args: [move.item], actor: move.actor })} (made ${move.queuedAt}): pending`);
   }
-  for (const refused of state.outboxRefusals ?? []) lines.push(refusalLine(refused));
+  const refusals = state.outboxRefusals ?? [];
+  const shown = every ? refusals : refusals.slice(-STATUS_REFUSALS);
+  // A status read always says how many it keeps, so a short list is never mistaken for a cut one.
+  if (refusals.length && !every) lines.push(`relay outbox: ${refusals.length} replay ${refusals.length === 1 ? 'refusal' : 'refusals'} kept${shown.length < refusals.length ? `; the newest ${shown.length}` : ''}:`);
+  for (const refused of shown) lines.push(refusalLine(refused));
   for (const { was, is } of state.outboxRenumbered ?? []) lines.push(`relay outbox: the item added here as #${was} while the relay was down is #${is} on the board`);
   return lines;
 }
 
 /** Preserve the named relay-status link and account lines, including recovery and deleted-copy guidance. */
-export function detailLines(result, boardName) {
+export function detailLines(result, boardName, { every = false } = {}) {
   const lines = [];
   if (result.excluded) lines.push(`relay excluded: ${result.exclusion.reason}${result.exclusion.at ? ' at ' + result.exclusion.at : ' (time unknown)'}; ${result.exclusion.next}`);
   lines.push(result.linked ? `${result.link}\nrelay: ${boardName} (board ${result.board}) is linked for GitHub ${result.login || `account ${result.account}`}; sequence ${result.sequence}; ${result.behind} pending uploads${result.recovery?.pending ? `; recovery pending for sequence ${result.recovery.skip}; retry ${result.recovery.next}` : ''}` : (result.notice || 'relay off; the local board is complete'));
   if (result.health) lines.push(result.health.text);
-  lines.push(...outboxLines(result));
+  lines.push(...outboxLines(result, { every }));
   if (result.storage) lines.push(relayStorageLine(result.storage));
   return lines;
 }

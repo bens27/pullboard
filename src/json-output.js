@@ -56,6 +56,17 @@ export function personRequestGuidance(message, { caller, leading = false } = {})
  * Collect one command's output; text mode writes immediately and JSON mode writes one document.
  * Long-running view explicitly flushes its address before waiting for a shutdown signal.
  */
+/**
+ * Whether `stream` has handed on everything written to it so far: a Node stream answers through the callback of a
+ * final empty write, which runs after every earlier write, and false when a write failed (such as EPIPE). A plain
+ * writer object took each write when it returned.
+ */
+function handedOff(stream) {
+  if (typeof stream?.once !== 'function') return Promise.resolve(true);
+  if (stream.destroyed || stream.writableEnded || stream.errored) return Promise.resolve(false);
+  return new Promise(done => stream.write('', error => done(!error)));
+}
+
 export function commandOutput(argv, streams, { version = 1, refusalDocument: suppliedRenderer } = {}) {
   let renderer = suppliedRenderer;
   let preparing;
@@ -75,6 +86,8 @@ export function commandOutput(argv, streams, { version = 1, refusalDocument: sup
   let caller = 'unknown';
   let callerRoot;
   let written = false;
+  let resultWritten = false;
+  const afterOutput = [];
   const messages = [];
   const diagnostics = [];
   const emit = (target, lines, line) => {
@@ -92,6 +105,7 @@ export function commandOutput(argv, streams, { version = 1, refusalDocument: sup
       document = documentFor({ code: refusal?.code ?? match?.[1] ?? (code === 2 ? 'USAGE' : 'COMMAND_FAILED'), message, next: refusal?.next }, { caller });
     } else if (result !== undefined) {
       document = { version: version, ...result, ...(diagnostics.length ? { diagnostics } : {}) };
+      resultWritten = true;
     } else {
       // A native versioned document, such as export, already owns its public shape.
       let native;
@@ -124,5 +138,14 @@ export function commandOutput(argv, streams, { version = 1, refusalDocument: sup
     exitCode: (code) => code || (remote ? 1 : 0),
     jsonMode: (value) => { enabled = Boolean(value); },
     flush,
+    // Text is already written when a command calls this; a JSON document is written only at flush. Either way the
+    // step runs only once stdout has handed the output on, so a stopped or broken pipe never counts as told.
+    afterOutput: async (work) => { if (enabled) afterOutput.push(work); else if (await handedOff(streams.stdout)) await work(); },
+    // Only a written result document said what a deferred step depends on; a refusal document did not.
+    runAfterOutput: async () => {
+      const ready = !enabled || resultWritten;
+      const work = afterOutput.splice(0);
+      if (ready && work.length && await handedOff(streams.stdout)) for (const step of work) await step();
+    },
   };
 }
