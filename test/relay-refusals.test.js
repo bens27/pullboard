@@ -221,3 +221,93 @@ test('relay on --all --json lists each board\'s newly told refusals [H21,B26]', 
   assert.equal(linkOf(box.linkFile).outboxRefusalsTold, 2, 'this board\'s cursor moves past what the document listed');
   assert.equal((await otherFields(other)).outboxRefusalsTold, 1, 'and the other board\'s');
 });
+
+test('a partial relay on --all, stopped while a board waits for its phone, moves only the printed boards\' cursors [H21,B26]', async (t) => {
+  const box = await relayClientFixture(t);
+  await box.link();
+  const mine = refusalsOn([1]);
+  seedLink(box.linkFile, { outboxRefusals: mine });
+  // A board whose baseline is paused for size, on a relay without the paged snapshot API: it links, complete:false.
+  const paused = await box.additionalBoard('paused board', { sharedHome: true });
+  const pausedRefusals = refusalsOn([2]);
+  await seedOther(paused, { outboxRefusals: pausedRefusals, baselinePause: { code: 'SNAPSHOT_TOO_LARGE', message: 'snapshot exceeds the size limit' } });
+  box.legacySnapshotApi(true);
+  const broken = join(box.root, '..', 'not-a-board');
+  mkdirSync(broken);
+  const waitingRefusals = refusalsOn([3]);
+  const module = name => JSON.stringify(resolve(import.meta.dirname, '../src/' + name));
+  const fixtureModule = JSON.stringify(resolve(import.meta.dirname, 'fixture-child.js'));
+  const run = await box.script(`
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { main } from ${module('cli-main.js')};
+import { registerProject } from ${module('projects.js')};
+import { readRelayMachine, updateRelayMachine } from ${module('relay-machine.js')};
+import { runFixtureGit } from ${fixtureModule};
+const root = ${JSON.stringify(box.root)};
+const link = JSON.parse(readFileSync(${JSON.stringify(box.linkFile)}, 'utf8'));
+const pair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+const { kty, crv, x, y } = await crypto.subtle.exportKey('jwk', pair.publicKey);
+updateRelayMachine(state => {
+  state.autoLink = true;
+  state.owner = { account: link.account, url: link.url };
+  state.devices.push({ deviceId: 'device-' + 'a'.repeat(32), account: link.account, url: link.url, fingerprint: 'b'.repeat(64),
+    label: 'Kitchen phone', createdAt: new Date().toISOString(), publicKey: { kty, crv, x, y } });
+});
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async (input, options) => {
+  const address = new URL(input instanceof Request ? input.url : input);
+  // The stand-in phone never answers, so the link request stays pending.
+  if (address.pathname.startsWith('/api/v1/devices/')) {
+    const body = address.pathname === '/api/v1/devices/approvals' ? { version: 1 } : { version: 1, approval: { state: 'pending' } };
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+  return originalFetch(input, options);
+};
+const quiet = { cwd: root, stdin: process.stdin, stdout: { isTTY: false, write() {} }, stderr: { write() {} } };
+const other = join(dirname(root), 'waiting-board');
+mkdirSync(other);
+for (const args of [['init','-q','-b','main'], ['-c','commit.gpgsign=false','commit','--allow-empty','-q','-m','chore: waiting board'],
+  ['remote','add','origin','git@github.com:fixture/repository-9.git']]) runFixtureGit(args, { cwd: other, env: process.env });
+const initCode = await main(['init'], { ...quiet, cwd: other });
+const waitingFile = join(other, '.git', 'pullboard', 'relay.json');
+const hadLink = existsSync(waitingFile);
+// The waiting board kept a refusal from an earlier link; only a printed one may move its cursor.
+writeFileSync(waitingFile, JSON.stringify({ ...(hadLink ? JSON.parse(readFileSync(waitingFile, 'utf8')) : link), outboxRefusals: ${JSON.stringify(waitingRefusals)} }) + '\\n', { mode: 0o600 });
+registerProject(${JSON.stringify(broken)}, new Date(Date.now() + 60_000));
+const pending = readRelayMachine().approvals.filter(entry => entry.root.endsWith('waiting-board')).length;
+let output = '';
+let errors = '';
+let interrupted = false;
+const streams = { cwd: root, stdin: process.stdin,
+  stdout: { isTTY: false, write: part => {
+    output += part;
+    if (!interrupted && output.includes('waiting for phone approval:')) { interrupted = true; setTimeout(() => process.emit('SIGINT'), 50); }
+  } },
+  stderr: { write: part => { errors += part; } } };
+const code = await main(['relay', 'on', '--all', '--url', ${JSON.stringify(box.origin)}], streams);
+globalThis.fetch = originalFetch;
+const waitingFields = JSON.parse(readFileSync(waitingFile, 'utf8'));
+process.stdout.write(JSON.stringify({ initCode, hadLink, pending, code, interrupted, output, errors,
+  waiting: { outboxRefusals: waitingFields.outboxRefusals, outboxRefusalsTold: waitingFields.outboxRefusalsTold } }));
+process.exit(0);
+`);
+  assert.equal(run.code, 0, run.failure);
+  const { initCode, pending, code, interrupted, output, errors, waiting } = run.document;
+  assert.equal(initCode, 0, 'the waiting board initializes');
+  assert.equal(pending, 1, 'its link waits for the phone');
+  assert.ok(interrupted, `relay on --all reached the approval wait\n${output}\n${errors}`);
+  assert.equal(code, 1, `the broken board fails the run\n${output}\n${errors}`);
+  assert.match(output, /Linked 2 of 4 registered boards\./u, `the real and paused boards linked; the broken one failed and one waits\n${output}`);
+  assert.match(output, /stopped waiting for phone approval: waiting-board/u, 'the run stopped with the board still waiting');
+  assert.equal(output.match(REFUSED)?.length, 2, 'the two linked boards each told their refusal');
+  assert.ok(!output.includes('synthetic refusal of #3'), 'the waiting board told nothing');
+
+  assert.deepEqual(linkOf(box.linkFile).outboxRefusals, mine, 'no board loses a refusal');
+  assert.equal(linkOf(box.linkFile).outboxRefusalsTold, 1, 'the board that printed moves its cursor');
+  const pausedNow = await otherFields(paused);
+  assert.deepEqual(pausedNow.outboxRefusals, pausedRefusals);
+  assert.equal(pausedNow.outboxRefusalsTold, 1, 'a board that linked complete:false still printed, so it moves too');
+  assert.deepEqual(waiting.outboxRefusals, waitingRefusals, 'the waiting board keeps its refusal');
+  assert.equal(waiting.outboxRefusalsTold, undefined, 'and its cursor never moves');
+});
