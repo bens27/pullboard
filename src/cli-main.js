@@ -355,6 +355,7 @@ async function runMain(argv, streams) {
     if (status === 0 && needsRepo && !parsed?.values['dry-run']) (await import('./blocks.js')).clearCompletedBlocks(io);
     if (status !== 0) await io.prepareRefusal();
     io.flush(status);
+    await io.runAfterOutput?.();
     return status;
   } finally {
     CHECKOUT_LEASES.delete(io);

@@ -13,6 +13,7 @@ import {
 import * as relayOutput from '../relay-output.js';
 import { prepareBoardMembers } from '../relay-membership.js';
 import { githubKeys } from '../relay-handover.js';
+import { advanceTold, untoldOf } from '../relay-refusals-told.js';
 import {
   relayJoin,
   relayPair,
@@ -141,9 +142,13 @@ export async function run(io, { first, second, rest, values }) {
   if (!first || first === 'status') await relayRead(ctx.info.root, io);
   const result = first === 'on' ? await relayOn(ctx.info.root, values.url, io, { name: values.name })
     : first === 'off' ? await relayOff(ctx.info.root, io) : relayStatus(ctx.info.root);
+  // Relay on tells only the refusals it has not told before; status and off show every kept one.
+  const told = first === 'on' ? untoldOf(ctx.info.root, result.outboxRefusals) : [];
+  if (first === 'on') { if (told.length) result.outboxRefusals = told; else delete result.outboxRefusals; }
   io.result?.(result);
   const boardName = listApiProjects().find((project) => project.root === ctx.info.root)?.name ?? basename(ctx.info.root);
-  for (const line of relayOutput.detailLines(result, boardName)) io.say(line);
+  for (const line of relayOutput.detailLines(result, boardName, { every: first === 'on' })) io.say(line);
+  if (told.length) await (io.afterOutput ?? (work => work()))(() => advanceTold(ctx.info.root, told, io));
   return 0;
 }
 

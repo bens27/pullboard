@@ -75,6 +75,8 @@ export function commandOutput(argv, streams, { version = 1, refusalDocument: sup
   let caller = 'unknown';
   let callerRoot;
   let written = false;
+  let resultWritten = false;
+  const afterOutput = [];
   const messages = [];
   const diagnostics = [];
   const emit = (target, lines, line) => {
@@ -92,6 +94,7 @@ export function commandOutput(argv, streams, { version = 1, refusalDocument: sup
       document = documentFor({ code: refusal?.code ?? match?.[1] ?? (code === 2 ? 'USAGE' : 'COMMAND_FAILED'), message, next: refusal?.next }, { caller });
     } else if (result !== undefined) {
       document = { version: version, ...result, ...(diagnostics.length ? { diagnostics } : {}) };
+      resultWritten = true;
     } else {
       // A native versioned document, such as export, already owns its public shape.
       let native;
@@ -124,5 +127,13 @@ export function commandOutput(argv, streams, { version = 1, refusalDocument: sup
     exitCode: (code) => code || (remote ? 1 : 0),
     jsonMode: (value) => { enabled = Boolean(value); },
     flush,
+    // Text is already on the terminal when a command calls this; a JSON document is written only at flush.
+    afterOutput: async (work) => { if (enabled) afterOutput.push(work); else await work(); },
+    // Only a written result document said what a deferred step depends on; a refusal document did not.
+    runAfterOutput: async () => {
+      const ready = !enabled || resultWritten;
+      const work = afterOutput.splice(0);
+      if (ready) for (const step of work) await step();
+    },
   };
 }
