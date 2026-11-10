@@ -124,6 +124,10 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - D4 [approved, must] Init writes a DOCTRINE.md for the repo's own rules only; the standard needs no copy. | gate: test/e2e.test.js | serves: D1
 - D5 [wont, aim] Covered: D6 versions every change; the changelog shows it. | gate: test/practice.test.js | serves: D1
 - D6 [approved, must] The standard changes only by an accepted RFC in docs/rfcs, and each change bumps its version. | gate: review | serves: D1
+- D7 [draft, must] pullboard.json `components` lists the components a board has. Run packs, the AGENTS.md block and resume notes omit a rule tagged with an unlisted one. | gate: test/doctrine-tags.test.js
+- D8 [draft, must] Without a `components` list, Pullboard probes each known component; `rigor` is present when `pullboard rigor quality` runs. A tag with no probe counts as present. | gate: test/doctrine-tags.test.js
+- D9 [draft, must] No rule is hidden silently: the view and `spec --json` show every row with its tags, and filtered text ends by counting omitted rules per absent component. | gate: test/doctrine-tags.test.js
+- D10 [draft, must] A doctrine row may name the components it pertains to in a trailing field, `tags: rigor, browser`: lowercase, comma-separated. A row without tags pertains everywhere. | gate: test/doctrine-tags.test.js
 
 ## C · Commits
 - C1 [approved, must] Header: type(scope): subject [ids], 72 characters at most. | gate: test/hooks.test.js
@@ -159,17 +163,17 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - I17 [approved, must] pullboard init and every registerProjectAndLink caller confirm the project is in the machine registry before saying registration is complete; relay on --all names every initialized board missing from the registry instead of skipping it silently. Measure: a board initialized but absent from projects.json is named by relay on --all; review 2026-12-07. | gate: review
 
 ## N · Next commands
-- N1 [draft, must] `pullboard decide`: the person's queue of everything waiting on them.
+- N1 [approved, must] `pullboard decide`: the person's queue of everything waiting on them.
 - N2 [approved, must] `pullboard next` claims my lane's next free item; --verify names work I did not build. | gate: test/e2e.test.js
 - N3 [wont, must] `pullboard context <id>`; pullboard show prints all of it.
-- N4 [draft, must] `pullboard ask add` stores the client's documents in ask/, hashed; rows can cite them.
-- N5 [draft, must] `pullboard spec approve` and `spec answer` record who changed a row's status, and when.
+- N4 [approved, must] `pullboard ask add` stores the client's documents in ask/, hashed; rows can cite them.
+- N5 [approved, must] `pullboard spec approve` and `spec answer` record who changed a row's status, and when.
 - N6 [approved, must] `pullboard prompt <role>` prints the role guide, overridable per repo. | gate: test/practice.test.js
-- N7 [draft, must] `pullboard plan` proposes lanes and items from the spec and the repo; --apply writes them.
-- N8 [draft, must] `pullboard run` starts configured agent commands per lane and role, under budgets and stops.
+- N7 [approved, must] `pullboard plan` proposes lanes and items from the spec and the repo; --apply writes them.
+- N8 [approved, must] `pullboard run` starts configured agent commands per lane and role, under budgets and stops.
 - N9 [wont, aim] `pullboard report`; spec view, the view's product progress and the ledger cover it.
 - N10 [approved, aim] `pullboard tour` shows a reject and its rework with scripted agents in thirty seconds. | gate: test/e2e.test.js
-- N11 [draft, aim] A git-pullboard bin, so `git pullboard <command>` works.
+- N11 [approved, aim] A git-pullboard bin, so `git pullboard <command>` works.
 - N12 [wont, aim] `pullboard mcp` serves the commands as MCP tools; A9 covers it.
 - N13 [approved, must] `next` names items still awaiting a verdict; a lane is done when its items are verified. | gate: test/board.test.js | serves: N2
 - N14 [approved, must] `pullboard run` builds routed items unattended: a command per tier, verified dependencies merged, check, retry, submit or escalate. | gate: test/e2e.test.js | serves: N8
@@ -189,7 +193,7 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - N28 [approved, must] The view shows each product's progress: rows met, and items open, building and verified. | gate: test/e2e.test.js | serves: S11
 - N29 [draft, must] `pullboard why <path|id>`: the rows, doctrine and verified items behind it, rejections included. | gate: test/e2e.test.js
 - N30 [approved, must] `show` prints the latest verdict in full and earlier ones as one line each; --history prints them all. | gate: test/show.test.js
-- N31 [draft, must] `pullboard prompt run` and the pullboard-run skill guide one agent through the team: spec, plan, builders, verifier, merges. | gate: test/practice.test.js
+- N31 [approved, must] `pullboard prompt run` and the pullboard-run skill guide one agent through the team: spec, plan, builders, verifier, merges. | gate: test/practice.test.js
 - N32 [draft, must] The coordinator's resume names its next step from board and spec: spec, approve, plan, build, verify or merge. | gate: test/e2e.test.js
 - N33 [draft, must] A repo names its project in pullboard.json, and the view lists projects with their repos beneath. | gate: test/cockpit.test.js | serves: N26
 - N34 [approved, must] A project has one Needs-you and one activity feed across its repos; each repo keeps its own board. | gate: test/cockpit/needs.test.js | serves: N33
@@ -198,10 +202,10 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - N37 [draft, must] pullboard help keeps each command's usage apart from its words, so tools can read it. | gate: test/e2e.test.js
 - N38 [draft, must] Every tab, item, row and shout in the view has its own address, so any of them can be linked. | gate: test/cockpit.test.js | serves: N26
 - N39 [approved, must] The view's secret never stays in the address bar: the first link trades it for a cookie. | gate: test/e2e-view.test.js | serves: N26
-- N40 [draft, must] Every action in the view answers within 100 ms and never over 250 ms, on a board of 3,000 items with eight projects open. | gate: test/cockpit/perf.test.js | serves: N26
-- N41 [draft, must] The Herdr TUI Pullboard panel (built from the pullboard.needs plugin) opens as a side panel split to the right of the focused terminal pane, not a popup, and reads every board on this machine through the local view's API (/api/v1 with the view's session secret), with a board switcher; it starts pullboard view when none is running and follows the view's live event stream, falling back to polling. Measure: opening it beside a terminal pane leaves that pane visible on the left, and with the view stopped it starts the view and lists every board the web UI lists. | gate: review
-- N42 [draft, must] The TUI Pullboard panel shows everything the web UI shows: items with search and detail, spec, doctrine, Needs you, roadmap, shouts, activity, settings (read-only) and relay status. Measure: for one board state, each web UI tab's rows appear in the panel's matching tab, checked by a test against the same /api/v1 state document. | gate: review
-- N43 [draft, must] Every action the Pullboard web UI offers works from the TUI panel as the person, through the same /api/v1 moves and endpoints: approve or decline spec and doctrine rows (one or a whole section), approve or decline sentinels, shout to an agent or lane, request to the coordinator, answer decisions, add an item, hold or release a lane, list and revoke agent credentials, relay sign-in and sharing (opening the browser for GitHub's step), forget unreadable boards, and run a Needs-you step. A refusal shows the code and next step. Measure: a test drives each action from the panel and sees the same move recorded as from the web UI. | gate: review
+- N40 [approved, must] Every action in the view answers within 100 ms and never over 250 ms, on a board of 3,000 items with eight projects open. | gate: test/cockpit/perf.test.js | serves: N26
+- N41 [approved, must] The Herdr TUI Pullboard panel (built from the pullboard.needs plugin) opens as a side panel split to the right of the focused terminal pane, not a popup, and reads every board on this machine through the local view's API (/api/v1 with the view's session secret), with a board switcher; it starts pullboard view when none is running and follows the view's live event stream, falling back to polling. Measure: opening it beside a terminal pane leaves that pane visible on the left, and with the view stopped it starts the view and lists every board the web UI lists. | gate: review
+- N42 [approved, must] The TUI Pullboard panel shows everything the web UI shows: items with search and detail, spec, doctrine, Needs you, roadmap, shouts, activity, settings (read-only) and relay status. Measure: for one board state, each web UI tab's rows appear in the panel's matching tab, checked by a test against the same /api/v1 state document. | gate: review
+- N43 [approved, must] Every action the Pullboard web UI offers works from the TUI panel as the person, through the same /api/v1 moves and endpoints: approve or decline spec and doctrine rows (one or a whole section), approve or decline sentinels, shout to an agent or lane, request to the coordinator, answer decisions, add an item, hold or release a lane, list and revoke agent credentials, relay sign-in and sharing (opening the browser for GitHub's step), forget unreadable boards, and run a Needs-you step. A refusal shows the code and next step. Measure: a test drives each action from the panel and sees the same move recorded as from the web UI. | gate: review
 
 ## A · API: the engine others build on
 - A1 [approved, must] Every command prints --json in a documented shape, stable within a major version. | gate: test/api.test.js
@@ -241,7 +245,7 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - H24 [approved, must] A board policy that changes whether a move is accepted (verifierStanding) is part of replay: the local apply runs under the same standing and policy the relay replay uses, and a policy change that alters replay outcomes either bumps the engine or lands as an ordered move, so a verify one replica accepts no other replica refuses. Measure: replaying a board's ordered log on another machine yields the same item states; review 2026-12-07. | gate: review
 - H25 [approved, must] When a queued move is refused on replay, every later queued move from the same seat that depends on it (an activity delivery receipt naming events that move created) is rebased or dropped with the refusal, never replayed into BAD_ACTIVITY_RECEIPT. Measure: kept BAD_ACTIVITY_RECEIPT refusals fall to zero; review 2026-12-07. | gate: review
 - H26 [approved, must] A kept relay refusal retires once a later accepted receipt covers the same item and operation by the same seat, and relay status lists only refusals still unresolved. Measure: relay status on a board whose refused moves were all later redone lists zero kept refusals; review 2026-12-07. | gate: review
-- H27 [draft, must] relay on and relay on --all link a board only when the signed-in account has write access to its origin repository: otherwise they refuse WRITE_REQUIRED before writing the board id or a link without a credential, and a relay request with no bearer credential is refused AUTH_REQUIRED naming the board to relink, never BAD_ORIGIN (which is for browser cookie writes). Measure: relay status never shows linked with an empty account; review 2026-12-07. | gate: review
+- H27 [approved, must] relay on and relay on --all link a board only when the signed-in account has write access to its origin repository: otherwise they refuse WRITE_REQUIRED before writing the board id or a link without a credential, and a relay request with no bearer credential is refused AUTH_REQUIRED naming the board to relink, never BAD_ORIGIN (which is for browser cookie writes). Measure: relay status never shows linked with an empty account; review 2026-12-07. | gate: review
 
 ## E · Teams: many people, one board
 
