@@ -6,7 +6,7 @@ Statuses: approved = in force · draft = proposed · wont = considered and decli
 
 ## W · Writing
 - W1 [approved, must] Numbers over adjectives. No hedges, no filler. | gate: review
-- W2 [approved, must] Headers: type(scope): subject [ids], 72 characters, no emojis. A body only for a non-obvious why, three sentences at most. | gate: commit-msg hook, review
+- W2 [approved, must] Headers: type(scope): subject [ids], at most 72 characters counting type, scope and ids, no emojis; cite fewer ids rather than run long. A body only for a non-obvious why, three sentences at most. | gate: commit-msg hook, review
 - W3 [approved, must] Spec ids go in commits, code headers and test names, never in words meant for people. | gate: review
 - W4 [approved, must] A refusal names its rule as a code and says the next step. | gate: review
 - W5 [draft, must] Tracked files and commit bodies never quote the owner or report what they said, chose or wanted, and never name private infrastructure: machine names, hostnames, LAN addresses or home paths. A commit is a subject line, then at most `Pullboard-Item: #N`. | gate: review
