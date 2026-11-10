@@ -124,10 +124,10 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - D4 [approved, must] Init writes a DOCTRINE.md for the repo's own rules only; the standard needs no copy. | gate: test/e2e.test.js | serves: D1
 - D5 [wont, aim] Covered: D6 versions every change; the changelog shows it. | gate: test/practice.test.js | serves: D1
 - D6 [approved, must] The standard changes only by an accepted RFC in docs/rfcs, and each change bumps its version. | gate: review | serves: D1
-- D7 [draft, must] pullboard.json `components` lists the components a board has. Run packs, the AGENTS.md block and resume notes omit a rule tagged with an unlisted one. | gate: test/doctrine-tags.test.js
-- D8 [draft, must] Without a `components` list, Pullboard probes each known component; `rigor` is present when `pullboard rigor quality` runs. A tag with no probe counts as present. | gate: test/doctrine-tags.test.js
-- D9 [draft, must] No rule is hidden silently: the view and `spec --json` show every row with its tags, and filtered text ends by counting omitted rules per absent component. | gate: test/doctrine-tags.test.js
-- D10 [draft, must] A doctrine row may name the components it pertains to in a trailing field, `tags: rigor, browser`: lowercase, comma-separated. A row without tags pertains everywhere. | gate: test/doctrine-tags.test.js
+- D7 [approved, must] pullboard.json `components` lists the components a board has. Run packs, the AGENTS.md block and resume notes omit a rule tagged with an unlisted one. | gate: test/doctrine-tags.test.js
+- D8 [approved, must] Without a `components` list, Pullboard probes each known component; `rigor` is present when `pullboard rigor quality` runs. A tag with no probe counts as present. | gate: test/doctrine-tags.test.js
+- D9 [approved, must] No rule is hidden silently: the view and `spec --json` show every row with its tags, and filtered text ends by counting omitted rules per absent component. | gate: test/doctrine-tags.test.js
+- D10 [approved, must] A doctrine row may name the components it pertains to in a trailing field, `tags: rigor, browser`: lowercase, comma-separated. A row without tags pertains everywhere. | gate: test/doctrine-tags.test.js
 
 ## C · Commits
 - C1 [approved, must] Header: type(scope): subject [ids], 72 characters at most. | gate: test/hooks.test.js
