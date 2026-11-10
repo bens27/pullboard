@@ -150,6 +150,18 @@
         "N28"
       ],
       "starts": "now"
+    },
+    "tui": {
+      "owns": [
+        "integrations/herdr-tui/",
+        "test/herdr-tui-"
+      ],
+      "specs": [
+        "N41",
+        "N42",
+        "N43"
+      ],
+      "starts": "now"
     }
   },
   "shared": ["test/chrome-fixture.js", "test/cockpit/fixture.js"],
