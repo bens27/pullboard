@@ -165,5 +165,5 @@
   "flakes": {
     "rerun": true
   },
-  "relay": { "outbox": true }
+  "relay": { "board": "85c189764cb32d489005ea2d5914ec64", "outbox": true }
 }
