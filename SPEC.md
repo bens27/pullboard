@@ -32,7 +32,7 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - B17 [approved, must] Every agent on a board runs one tested version of pullboard, never a checkout's unfinished edits. | gate: test/e2e.test.js | serves: P1
 - B18 [approved, aim] An item can wait until a time; next and claim pass over it until then. | gate: test/board.test.js | serves: B8
 - B19 [approved, aim] An item can wait until main contains a given commit; next and claim pass over it until then. | gate: test/e2e.test.js | serves: B8
-- B20 [draft, aim] The person orders open items: now, next or later, and up or down within each; next follows it first. | gate: test/board.test.js
+- B20 [approved, aim] The person orders open items: now, next or later, and up or down within each; next follows it first. | gate: test/board.test.js
 - B21 [approved, aim] A shout can ask for a decision; it stays open until someone answers it. | gate: test/board.test.js | serves: B7
 - B22 [approved, aim] A shout can attach typed evidence: attempt or receipt, outcome, item and commit, as fields, not prose. | gate: test/board.test.js | serves: B7
 - B23 [approved, aim] A shout's path:lines@commit reference opens that code as it was at that commit. | gate: test/cockpit/references.test.js | serves: B7
@@ -40,13 +40,15 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - B25 [approved, must] Questions go one step up: agents ask their coordinator; a coordinator asks the person or the coordinator above. | gate: test/board.test.js | serves: B21
 - B26 [approved, must] Needs-you holds only the person's calls: decisions passed up, rows to approve, held lanes; agents ask their coordinator. | gate: test/board.test.js | serves: B25
 - B27 [approved, must] A coordinator answers a decision or passes it up with its note; the answer reaches whoever asked. | gate: test/board.test.js | serves: B25
-- B28 [draft, must] Work renews the lease: a commit, gate run or command from the holder's worktree renews its claim. | gate: test/board.test.js | serves: B4
-- B29 [draft, must] Any agent appends typed facts to an item's thread; the board stamps each with author, time and id. | gate: test/board.test.js | serves: B22
+- B28 [approved, must] Work renews the lease: a commit, gate run or command from the holder's worktree renews its claim. | gate: test/board.test.js | serves: B4
+- B29 [approved, must] Any agent appends typed facts to an item's thread; the board stamps each with author, time and id. | gate: test/board.test.js | serves: B22
 - B30 [approved, must] Judgements on an item (decision, rejection, supersession, root cause) come only from its holder or the coordinator. | gate: test/board.test.js | serves: B29
 - B31 [approved, must] A thread is append-only: a correction is a new fact that supersedes the old one, and both stay visible. | gate: test/board.test.js | serves: B29
-- B32 [draft, must] A fact binds code by full sha; show prints an item's moves and facts as one timeline. | gate: test/board.test.js | serves: B29
-- B33 [draft, aim] The view shows an item's thread in its detail, with code references live. | gate: test/cockpit.test.js | serves: B29
+- B32 [approved, must] A fact binds code by full sha; show prints an item's moves and facts as one timeline. | gate: test/board.test.js | serves: B29
+- B33 [approved, aim] The view shows an item's thread in its detail, with code references live. | gate: test/cockpit.test.js | serves: B29
 - B34 [approved, must] The trunk is the main checkout's branch, whatever its name; nothing assumes main. | gate: test/trunk.test.js | serves: P2
+- B35 [approved, must] Needs-you assumes the person's view is stale until shown fresh: an ask records the board facts its steps name (items, rows, milestones, tags) when filed; each read re-checks them and marks the ask stale with its reason (a missing milestone, a landed item, a newer ask on the same subject), a stale step will not run until the filer re-confirms or drops it, and a step marked done stays open when its effect cannot be seen (the tag or release is absent). Measure: asks the person completed or dropped while already stale, counted per month, fall to zero; review 2026-12-07. | gate: review
+- B36 [approved, must] pullboard takeover will not move a seat from a live session (fresh heartbeat) without --force, and tells the old holder, so two resumed sessions cannot pull the coordinator seat back and forth. Measure: takeovers that move a seat whose holder had a fresh heartbeat, counted from board activity, fall to zero without --force; review 2026-12-07. | gate: review
 
 ## M · Machine
 - M1 [approved, must] One declaration holds every item state, move, guard and refusal; code, help and docs derive from it. | gate: test/machine.test.js
@@ -67,13 +69,14 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - V10 [approved, must] Agents see a gate digest: one line when green, the failures when red; the full log stays in .git. | gate: test/e2e.test.js | serves: V4
 - V11 [retired] Merged into V3: submit and verify both refuse a bar that moved.
 - V12 [approved, must] Verify and escalate take --note-file, so a note reaches the board exactly as written. | gate: test/e2e.test.js | serves: V5
-- V13 [draft, must] Every verdict records the verifier's HEAD; a review past the submitted commit is flagged, or refused if the repo asks. | gate: test/board.test.js | serves: V8
+- V13 [approved, must] Every verdict records the verifier's HEAD; a review past the submitted commit is flagged, or refused if the repo asks. | gate: test/board.test.js | serves: V8
 - V14 [retired] Merged into V2.
 - V15 [approved, must] `next --verify` reserves the review under a lease; another verdict on it is refused while the lease lives. | gate: test/machine.test.js | serves: V1
 - V16 [approved, must] Submit runs the gate itself on the exact tree it submits, never trusting an earlier stamp. | gate: test/gate.test.js | serves: P1
-- V17 [draft, must] Submit refuses a head carrying commits pinned to another item that is not verified. | gate: test/e2e.test.js | serves: V6
-- V18 [draft, must] Accept runs the repo's install step before the frozen check; a failed install or timeout reads unverified, never red. | gate: test/e2e.test.js | serves: V2
-- V19 [draft, must] Every accept records whether a frozen check ran at the submitted commit; show and the ledger say so. | gate: test/verdict-check.test.js | serves: V8
+- V17 [approved, must] Submit refuses a head carrying commits pinned to another item that is not verified. | gate: test/e2e.test.js | serves: V6
+- V18 [approved, must] Accept runs the repo's install step before the frozen check; a failed install or timeout reads unverified, never red. | gate: test/e2e.test.js | serves: V2
+- V19 [approved, must] Every accept records whether a frozen check ran at the submitted commit; show and the ledger say so. | gate: test/verdict-check.test.js | serves: V8
+- V20 [approved, must] A rework after a reject that names a reproduction must add a test that reproduces that edge, shown red at the rejected head; submit names the reject's edge when the change adds no test for it, so one item does not bounce on the same cause. After a second reject with the same cause, the next submit states the premise the item rests on and the evidence that falsifies or keeps it before a third build. Measure: pullboard rigor counts of items rejected three or more times on one cause fall to zero; review 2026-12-07. | gate: review
 
 ## O · Options
 - O1 [approved, aim] Pullboard asks the person once whether to check for new releases, and checks only if they said yes; pullboard update upgrades on request. | gate: test/settings.test.js | serves: O5
@@ -120,7 +123,7 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - D3 [approved, must] Agents and the view see one doctrine in force: inherited rules and the repo's own, each marked with its source and version. | gate: test/practice.test.js | serves: D1
 - D4 [approved, must] Init writes a DOCTRINE.md for the repo's own rules only; the standard needs no copy. | gate: test/e2e.test.js | serves: D1
 - D5 [wont, aim] Covered: D6 versions every change; the changelog shows it. | gate: test/practice.test.js | serves: D1
-- D6 [draft, must] The standard changes only by an accepted RFC in docs/rfcs, and each change bumps its version. | gate: review | serves: D1
+- D6 [approved, must] The standard changes only by an accepted RFC in docs/rfcs, and each change bumps its version. | gate: review | serves: D1
 
 ## C · Commits
 - C1 [approved, must] Header: type(scope): subject [ids], 72 characters at most. | gate: test/hooks.test.js
@@ -128,13 +131,13 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - C3 [approved, must] Pre-push runs the gate, unless this exact tree already passed it. | gate: test/e2e.test.js | serves: V4
 - C4 [retired] Merged into P4, which now also says a refusal shows what it saw.
 - C5 [approved, must] Pre-commit runs the configured fixers on fully staged files and restages what they fix. | gate: test/e2e.test.js
-- C6 [draft, must] Submit refuses unless the item's commits since claim, together, cite every spec row the item cites. | gate: test/e2e.test.js | serves: C2
+- C6 [approved, must] Submit refuses unless the item's commits since claim, together, cite every spec row the item cites. | gate: test/e2e.test.js | serves: C2
 - C7 [approved, must] CI runs the gate on every push and pull request, Node 22.13 and 24, on Linux and, once public, macOS. | gate: test/ci.test.js | serves: C3
 
 ## R · Receipts
 - R1 [approved, must] The ledger lists built items: lane, spec, builder, verifier, verdict, commit. | gate: test/board.test.js
 - R2 [approved, must] Every move lands in an append-only event log. | gate: test/board.test.js
-- R3 [draft, must] merged records only a trunk commit that contains the item's commit or carries its patch; anything else needs a note. | gate: test/merged.test.js | serves: R1
+- R3 [approved, must] merged records only a trunk commit that contains the item's commit or carries its patch; anything else needs a note. | gate: test/merged.test.js | serves: R1
 
 ## I · Init
 - I1 [approved, must] One command sets up config, spec, agent instructions, hooks and board. | gate: test/e2e.test.js
@@ -145,14 +148,15 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - I6 [approved, must] Init adds a Claude Code SessionStart hook that runs `pullboard resume`, keeping every other setting. | gate: test/e2e.test.js | serves: N19
 - I7 [retired] Merged into I4.
 - I8 [approved, must] Init registers the project on this machine, so the view lists it. | gate: test/e2e.test.js | serves: N26
-- I9 [draft, must] Init ends by telling an agent to start a new session, which loads its skills, then say what to build. | gate: test/e2e.test.js
-- I10 [draft, aim] The README draws how work moves, an item's life, where things live and starting with an agent. | gate: test/readme.test.js | serves: M1
+- I9 [approved, must] Init ends by telling an agent to start a new session, which loads its skills, then say what to build. | gate: test/e2e.test.js
+- I10 [approved, aim] The README draws how work moves, an item's life, where things live and starting with an agent. | gate: test/readme.test.js | serves: M1
 - I11 [approved, must] The README shows the board as people see it, captured from a demo board a script rebuilds. | gate: docs/shots/shots.test.js
-- I12 [draft, must] The README states what runs where today, which systems are tested, and what comes next. | gate: review
-- I13 [draft, aim] A recording of `pullboard tour` plays on the README and the site, regenerated by a script. | gate: docs/shots/shots.test.js
-- I14 [draft, aim] A 90-second product video, rendered by a script from the demo board, plays on the README and the site. | gate: docs/shots/shots.test.js | serves: I13
-- I15 [draft, must] A release is a tag on a green commit; CI publishes it to npm with provenance, never by hand. | gate: review
-- I16 [draft, aim] Init ignores the folders agent tools make inside the repo, such as .claude/worktrees/, so they never block a submit. | gate: test/init-ignore.test.js | serves: I1
+- I12 [approved, must] The README states what runs where today, which systems are tested, and what comes next. | gate: review
+- I13 [approved, aim] A recording of `pullboard tour` plays on the README and the site, regenerated by a script. | gate: docs/shots/shots.test.js
+- I14 [approved, aim] A 90-second product video, rendered by a script from the demo board, plays on the README and the site. | gate: docs/shots/shots.test.js | serves: I13
+- I15 [approved, must] A release is a tag on a green commit; CI publishes it to npm with provenance, never by hand. | gate: review
+- I16 [approved, aim] Init ignores the folders agent tools make inside the repo, such as .claude/worktrees/, so they never block a submit. | gate: test/init-ignore.test.js | serves: I1
+- I17 [approved, must] pullboard init and every registerProjectAndLink caller confirm the project is in the machine registry before saying registration is complete; relay on --all names every initialized board missing from the registry instead of skipping it silently. Measure: a board initialized but absent from projects.json is named by relay on --all; review 2026-12-07. | gate: review
 
 ## N · Next commands
 - N1 [draft, must] `pullboard decide`: the person's queue of everything waiting on them.
@@ -206,7 +210,7 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - A7 [approved, aim] `pullboard export` writes a whole board as JSON, and `import` rebuilds it, losing nothing. | gate: test/api.test.js
 - A8 [approved, aim] The gate passes on macOS, Linux and Windows. | gate: test/ci.test.js | serves: C7
 - A9 [approved, aim] An agent can work the board through MCP tools, with the same moves and refusals as the CLI. | gate: test/api.test.js
-- A10 [draft, aim] The view exports a board as a read-only static snapshot that replays its events, for any static host. | gate: test/cockpit.test.js | serves: A3
+- A10 [approved, aim] The view exports a board as a read-only static snapshot that replays its events, for any static host. | gate: test/cockpit.test.js | serves: A3
 
 ## H · Relay: pullboard.dev, opt in
 - H1 [approved, must] `pullboard relay on|off` links this board to pullboard.dev, after a GitHub sign-in. | gate: test/relay.test.js
@@ -221,15 +225,20 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - H10 [approved, aim] Offline, a linked board reads locally and refuses moves until the relay answers. | gate: test/relay.test.js | serves: H3
 - H11 [approved, aim] Without an account, `pullboard sync` keeps one board across machines through the repo's own git remote. | gate: test/sync.test.js
 - H12 [approved, must] pullboard.dev never writes to a repo: what you do there, like approving a row, reaches your agents as a request. | gate: test/relay.test.js | serves: H6
-- H13 [draft, must] Acting on a board, and minting its tokens, needs write access to its repo. | gate: test/relay.test.js | serves: H8
-- H14 [draft, must] A public repo's board is hidden from readers without triage access, unless its owner publishes it. | gate: test/relay.test.js | serves: H8
+- H13 [approved, must] Acting on a board, and minting its tokens, needs write access to its repo. | gate: test/relay.test.js | serves: H8
+- H14 [approved, must] A public repo's board is hidden from readers without triage access, unless its owner publishes it. | gate: test/relay.test.js | serves: H8
 - H15 [approved, must] The relay can't read boards: the CLI seals every move and snapshot with a key that stays on your devices. | gate: test/relay.test.js | serves: H7
 - H16 [approved, must] Every client applies moves in the relay's order with the CLI's engine, refusing what the CLI refuses. | gate: test/relay.test.js | serves: H3
 - H17 [approved, must] A phone or machine joins a board by pairing once, from a code or QR a linked machine prints. | gate: test/relay.test.js | serves: H15
 - H18 [approved, must] The relay keeps a board only while linked: unlinking deletes it; 90 idle days delete it; backups last 14 days. | gate: test/relay.test.js | serves: H7
 - H19 [approved, aim] Without the relay, a phone sees and acts on a board through the view on the local network, after scanning a pairing code. | gate: test/cockpit/lan.test.js
 - H21 [approved, aim] A linked board reads and moves locally whether or not the relay answers: every move returns at once and is sent when the relay is reachable, and a conflict found on sync is refused loudly naming the winner (revises H10 for #1013). | gate: test/relay-local-first.test.js
-- H22 [draft, aim] A linked board stays linked: the person signs in once per machine, and only relay off or a revoke unlinks it. | gate: review
+- H22 [approved, aim] A linked board stays linked: the person signs in once per machine, and only relay off or a revoke unlinks it. | gate: review
+- H23 [approved, must] Relay status reads never write the link: relay status and pullboard status run no catch-up save or credential migration save, and every link save happens under locked(file). Measure: a test runs both status reads against a read-only link file and sees no write and no error; review 2026-12-07. | gate: review
+- H24 [approved, must] A board policy that changes whether a move is accepted (verifierStanding) is part of replay: the local apply runs under the same standing and policy the relay replay uses, and a policy change that alters replay outcomes either bumps the engine or lands as an ordered move, so a verify one replica accepts no other replica refuses. Measure: replaying a board's ordered log on another machine yields the same item states; review 2026-12-07. | gate: review
+- H25 [approved, must] When a queued move is refused on replay, every later queued move from the same seat that depends on it (an activity delivery receipt naming events that move created) is rebased or dropped with the refusal, never replayed into BAD_ACTIVITY_RECEIPT. Measure: kept BAD_ACTIVITY_RECEIPT refusals fall to zero; review 2026-12-07. | gate: review
+- H26 [approved, must] A kept relay refusal retires once a later accepted receipt covers the same item and operation by the same seat, and relay status lists only refusals still unresolved. Measure: relay status on a board whose refused moves were all later redone lists zero kept refusals; review 2026-12-07. | gate: review
+- H27 [draft, must] relay on and relay on --all link a board only when the signed-in account has write access to its origin repository: otherwise they refuse WRITE_REQUIRED before writing the board id or a link without a credential, and a relay request with no bearer credential is refused AUTH_REQUIRED naming the board to relink, never BAD_ORIGIN (which is for browser cookie writes). Measure: relay status never shows linked with an empty account; review 2026-12-07. | gate: review
 
 ## E · Teams: many people, one board
 
@@ -239,10 +248,10 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - E4 [approved, must] A board's people are its repository's writers; only the approvers pullboard.json names approve rows or answer person decisions, and a change to that list takes effect only once an existing approver approves it. | gate: test/team.test.js
 - E5 [approved, must] Every agent acts with its own token under the person running it, never as its checkout path; removing a person stops their agents. | gate: test/team.test.js
 - E6 [approved, must] Removing a person's write access removes them from the board; the next member device online rotates the key, so their devices read nothing made after it. | gate: test/team.test.js
-- E7 [draft, must] Main moves in one landing order, sequenced on the trunk's board; a second landing builds on the first or is refused. | gate: test/team.test.js
-- E8 [draft, must] A verdict reads stale on every replica once main moves under it in a file the item changed, until re-verified or landed. | gate: test/team.test.js
-- E9 [draft, must] Every session on a paired machine works the board alike: terminal, SSH, agent, scheduled job or CI; the key sits in an owner-only file. | gate: test/team.test.js
-- E10 [draft, must] A CI drill proves it: two people, two machines, a keyless session and a private board share work through a local relay. | gate: test/team.test.js
+- E7 [approved, must] Main moves in one landing order, sequenced on the trunk's board; a second landing builds on the first or is refused. | gate: test/team.test.js
+- E8 [approved, must] A verdict reads stale on every replica once main moves under it in a file the item changed, until re-verified or landed. | gate: test/team.test.js
+- E9 [approved, must] Every session on a paired machine works the board alike: terminal, SSH, agent, scheduled job or CI; the key sits in an owner-only file. | gate: test/team.test.js
+- E10 [approved, must] A CI drill proves it: two people, two machines, a keyless session and a private board share work through a local relay. | gate: test/team.test.js
 - E11 [approved, must] Each person may keep a private board per repo in ~/.pullboard; its items stay on that person's devices. | gate: test/team.test.js
 - E12 [approved, must] pullboard.json names the repo's board and its approvers; a clone of a linked repo joins that board, and the relay refuses to link a second team board to the same repo. | gate: test/team.test.js
 - E13 [approved, must] A new item goes to the repo's board; --private keeps it on the person's own board. | gate: test/team.test.js
@@ -250,42 +259,42 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - E15 [approved, must] Move re-homes an open or verified item in one sequenced move; its old id points to the new one and is never reused. | gate: test/team.test.js
 - E16 [approved, must] Pairing registers a device key, and each board key is wrapped to its members' devices, so adding or removing a member needs no new code. | gate: test/team.test.js
 - E17 [approved, must] A member's new device gets its board keys from any online member device once an SSH key on their GitHub account signs its device key. | gate: test/team.test.js
-- E18 [draft, must] A CI or cloud session reads and moves with a board key and an agent token from its environment, scoped to one board. | gate: test/team.test.js
-- E19 [draft, must] Each board has one coordinator, held by one session at a time; takeover passes it between sessions, machines and people. | gate: test/team.test.js
-- E20 [draft, must] Only a board's approvers can unlink it or replace its snapshot, and a move no member can open is set aside without stopping replay. | gate: test/team.test.js
-- E21 [draft, must] An agent's grant is a subset of its person's; at claim it narrows to the item's lane and criterion, and it ends with the lease. | gate: test/team.test.js
+- E18 [approved, must] A CI or cloud session reads and moves with a board key and an agent token from its environment, scoped to one board. | gate: test/team.test.js
+- E19 [approved, must] Each board has one coordinator, held by one session at a time; takeover passes it between sessions, machines and people. | gate: test/team.test.js
+- E20 [approved, must] Only a board's approvers can unlink it or replace its snapshot, and a move no member can open is set aside without stopping replay. | gate: test/team.test.js
+- E21 [approved, must] An agent's grant is a subset of its person's; at claim it narrows to the item's lane and criterion, and it ends with the lease. | gate: test/team.test.js
 - E22 [approved, must] Person-only moves carry the person's signature from the phone or an SSH key; agents never hold their person's relay credential. | gate: test/team.test.js
-- E23 [draft, aim] Join and claim write the agent's grant into its harness's own permission rules: its lane writable, key files and pushes denied. | gate: test/team.test.js
-- E24 [draft, must] Every default names who can change it; an override is a signed record with a reason and an expiry. | gate: test/team.test.js
-- E25 [draft, must] A trunk lands one batch at a time under its board's landing lease; the rest queue behind it. | gate: test/team.test.js
-- E26 [draft, must] A batch takes the trunk's verified items in verdict order. | gate: test/team.test.js
-- E27 [draft, must] pullboard.json names the landing gate, its timeouts, its cadence and the environment it must run in; land runs the batch on a matching host. | gate: test/team.test.js
-- E28 [draft, must] A machine joins a trunk's landing pool by its own setting, and every gate run and verdict records the environment it ran in. | gate: test/team.test.js
-- E29 [draft, must] A red batch that bisects to no culprit files a defect against the failing test; the trunk holds until it's fixed or an approver signs an expiring waiver. | gate: test/team.test.js
-- E30 [draft, aim] A merge queue lands verified items in the trunk board's order, with no one running land by hand. | gate: test/team.test.js
+- E23 [approved, aim] Join and claim write the agent's grant into its harness's own permission rules: its lane writable, key files and pushes denied. | gate: test/team.test.js
+- E24 [approved, must] Every default names who can change it; an override is a signed record with a reason and an expiry. | gate: test/team.test.js
+- E25 [approved, must] A trunk lands one batch at a time under its board's landing lease; the rest queue behind it. | gate: test/team.test.js
+- E26 [approved, must] A batch takes the trunk's verified items in verdict order. | gate: test/team.test.js
+- E27 [approved, must] pullboard.json names the landing gate, its timeouts, its cadence and the environment it must run in; land runs the batch on a matching host. | gate: test/team.test.js
+- E28 [approved, must] A machine joins a trunk's landing pool by its own setting, and every gate run and verdict records the environment it ran in. | gate: test/team.test.js
+- E29 [approved, must] A red batch that bisects to no culprit files a defect against the failing test; the trunk holds until it's fixed or an approver signs an expiring waiver. | gate: test/team.test.js
+- E30 [approved, aim] A merge queue lands verified items in the trunk board's order, with no one running land by hand. | gate: test/team.test.js
 - E31 [approved, aim] A private item lands on the repo's trunk with a receipt: its id, commit and verifier, never its text. | gate: test/team.test.js
-- E32 [draft, aim] A repo's board can name a parent board, and approvers on both sides sign the link. | gate: test/team.test.js
-- E33 [draft, aim] A parent item shows its children's states from the boards below, never their text. | gate: test/team.test.js
-- E34 [draft, aim] A board chooses what its link carries up: states, counts or nothing. | gate: test/team.test.js
-- E35 [draft, aim] A board offers an item to a board below, which accepts it as a child or declines with a reason. | gate: test/team.test.js
-- E36 [draft, aim] A rule set on a board holds on every board below it. | gate: test/team.test.js
-- E37 [draft, aim] A board below loosens an inherited rule only with an approver's signed, expiring waiver. | gate: test/team.test.js
-- E38 [draft, aim] Rules reach boards below as a signed bundle any board can verify offline. | gate: test/team.test.js
-- E39 [draft, aim] A decision spanning two boards with no common parent needs an approver from each. | gate: test/team.test.js
-- E40 [draft, aim] A planning repo's board sits above team boards, and its members are that repo's writers. | gate: test/team.test.js
-- E41 [draft, aim] A board can have two parents, and both parents' rules apply. | gate: test/team.test.js
-- E42 [draft, aim] Detaching a board keeps its inherited rules as its own, and its old parent stops receiving its states. | gate: test/team.test.js
-- E43 [draft, aim] Handles carry an organization prefix across organizations, as acme/web#12. | gate: test/team.test.js
+- E32 [approved, aim] A repo's board can name a parent board, and approvers on both sides sign the link. | gate: test/team.test.js
+- E33 [approved, aim] A parent item shows its children's states from the boards below, never their text. | gate: test/team.test.js
+- E34 [approved, aim] A board chooses what its link carries up: states, counts or nothing. | gate: test/team.test.js
+- E35 [approved, aim] A board offers an item to a board below, which accepts it as a child or declines with a reason. | gate: test/team.test.js
+- E36 [approved, aim] A rule set on a board holds on every board below it. | gate: test/team.test.js
+- E37 [approved, aim] A board below loosens an inherited rule only with an approver's signed, expiring waiver. | gate: test/team.test.js
+- E38 [approved, aim] Rules reach boards below as a signed bundle any board can verify offline. | gate: test/team.test.js
+- E39 [approved, aim] A decision spanning two boards with no common parent needs an approver from each. | gate: test/team.test.js
+- E40 [approved, aim] A planning repo's board sits above team boards, and its members are that repo's writers. | gate: test/team.test.js
+- E41 [approved, aim] A board can have two parents, and both parents' rules apply. | gate: test/team.test.js
+- E42 [approved, aim] Detaching a board keeps its inherited rules as its own, and its old parent stops receiving its states. | gate: test/team.test.js
+- E43 [approved, aim] Handles carry an organization prefix across organizations, as acme/web#12. | gate: test/team.test.js
 
 ## Q · Queues and procedures
 - Q1 [approved, must] A resource has a name, a capacity, a scope (machine, repo or board) and a queue. | gate: test/resources.test.js
 - Q2 [approved, must] Taking a full resource queues the taker in order, and it says what it waits behind. | gate: test/resources.test.js | serves: Q1
 - Q3 [approved, must] A resource is held under a lease, so a holder that dies frees it when the lease lapses. | gate: test/resources.test.js | serves: Q1
 - Q4 [approved, must] Each gate run takes one of its machine's gate slots, two by default; a cached pass takes none. | gate: test/resources.test.js | serves: Q1
-- Q5 [draft, aim] Procedures are state machines declared as data: states, moves, actors, guards and resources. | gate: test/procedures.test.js
-- Q6 [draft, aim] The item lifecycle runs from its declaration, as the first procedure. | gate: test/procedures.test.js | serves: Q5
-- Q7 [draft, aim] Agents raise proposals from friction; another agent reviews the evidence; the coordinator adopts. | gate: test/procedures.test.js | serves: Q5
-- Q8 [draft, must] An adopted procedure starts as a draft for the person to approve, and they can suspend it any time. | gate: test/procedures.test.js | serves: Q7
-- Q9 [draft, must] spec check refuses a procedure with an unreachable state, a move no actor can make, or a resource cycle. | gate: test/procedures.test.js | serves: Q5
-- Q10 [draft, must] Procedures only add structure: they queue, order and guard moves, and never drop a standard guard. | gate: test/procedures.test.js | serves: Q5
-- Q11 [draft, aim] A repo option says when a draft procedure runs: at once by default, once approved, or never. | gate: test/procedures.test.js | serves: Q7
+- Q5 [approved, aim] Procedures are state machines declared as data: states, moves, actors, guards and resources. | gate: test/procedures.test.js
+- Q6 [approved, aim] The item lifecycle runs from its declaration, as the first procedure. | gate: test/procedures.test.js | serves: Q5
+- Q7 [approved, aim] Agents raise proposals from friction; another agent reviews the evidence; the coordinator adopts. | gate: test/procedures.test.js | serves: Q5
+- Q8 [approved, must] An adopted procedure starts as a draft for the person to approve, and they can suspend it any time. | gate: test/procedures.test.js | serves: Q7
+- Q9 [approved, must] spec check refuses a procedure with an unreachable state, a move no actor can make, or a resource cycle. | gate: test/procedures.test.js | serves: Q5
+- Q10 [approved, must] Procedures only add structure: they queue, order and guard moves, and never drop a standard guard. | gate: test/procedures.test.js | serves: Q5
+- Q11 [approved, aim] A repo option says when a draft procedure runs: at once by default, once approved, or never. | gate: test/procedures.test.js | serves: Q7
