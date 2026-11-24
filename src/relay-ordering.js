@@ -122,14 +122,16 @@ export function relayOrdering({ request, localRecords, decoded, replayRelayRecor
   /**
    * Post one sealed move to the relay as its actor, renewing an expired seat token once and taking the next free seat
    * name for a registration the relay already gave out. Network only: it applies nothing, so the outbox can send a
-   * move while this machine's board still shows its queued moves on top (#1013).
+   * move while this machine's board still shows its queued moves on top (#1013). A queued reopen's
+   * submitted head is checked during ordered replay after rebuild removes those optimistic changes.
    */
-  async function postPending(root, file, state, pending, io) {
+  async function postPending(root, file, state, pending, io, { fromOutbox = false } = {}) {
     let renewedAgentToken = false;
     for (let tries = 0; tries < 100; tries += 1) {
       const actor = credentialActor(pending.move);
       try {
-        const transport = await conflictRecords.transport(root, pending.move, localRecords, () => actorTransport(root, file, state, actor, io));
+        const open = () => actorTransport(root, file, state, actor, io);
+        const transport = await (fromOutbox ? open() : conflictRecords.transport(root, pending.move, localRecords, open));
         const reply = await request(transport, '/api/v1/boards/' + state.board + '/moves', { method: 'POST',
           body: { sequence: pending.sequence, sealed: pending.sealed, ...(pending.registration ? { registration: pending.registration } : {}) } }, io);
         if (reply.event?.event_id !== pending.sequence || reply.event.sealed !== pending.sealed) throw new Refused('RELAY_RESPONSE', 'the relay acknowledgement differs from this executable send; fetch the configured relay');

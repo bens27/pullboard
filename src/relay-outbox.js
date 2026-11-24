@@ -720,7 +720,7 @@ async function sendQueued(link, key) {
     }
     const pending = { move, intent: entry.intent, ...(entry.command ? { command: entry.command, commandIntent: entry.commandIntent } : {}),
       sequence, sealed, ...(registration ? { registration } : {}) };
-    try { await link.postPending(root, file, state, pending, io); }
+    try { await link.postPending(root, file, state, pending, io, { fromOutbox: true }); }
     catch (error) {
       // Another machine's move took this place: the next pull orders it first and this move goes after it.
       if (['SEQUENCE_REPEAT', 'SEQUENCE_GAP'].includes(error.code)) break;
