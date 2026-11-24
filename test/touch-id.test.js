@@ -1,3 +1,4 @@
+/** @pullboard-test-input source-tree */
 /** Touch ID stands in for the person's own terminal only on a board that turns it on, and only on success [B26,R1]. */
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';

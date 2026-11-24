@@ -1,3 +1,4 @@
+/** @pullboard-test-input source-tree */
 /** Kept relay replay refusals: relay on tells each once by a told cursor; status shows every kept one [H21,B26]. */
 import assert from 'node:assert/strict';
 import {
