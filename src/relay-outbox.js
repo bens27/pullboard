@@ -58,7 +58,10 @@ import {
   refuseOversizedMove,
 } from './relay-move-size.js';
 import { compactHealthFindings } from './health-receipts.js';
-import { numberRefusals, recordRefusal } from './relay-refusals.js';
+import {
+  numberRefusals,
+  recordRefusal,
+} from './relay-refusals.js';
 import {
   outboxFile,
   outboxSummaryFile,
