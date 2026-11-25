@@ -143,6 +143,7 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - C12 [approved, must] A gate red blocks a push or a landing only when that test passed at the last recorded trunk result; a failure inherited from trunk is listed with its item and does not block. | gate: test/gate.test.js
 - C13 [approved, must] The gate runs every test file to the end and lists every failure in one run; it never stops at the first. | gate: test/gate.test.js
 - C15 [approved, must] Every test red at the trunk record has an open item that names it, opened when the red is recorded and ranked first in its lane; an inherited red is never listed without its item. | gate: test/gate.test.js
+- C16 [draft, must] The person can end a live landing waiver early from their terminal or the view, with a reason; from that moment it covers no failure, and both the waiver and its end stay in history. An agent cannot end one. | gate: test/landing-waiver-end.test.js
 
 ## R · Receipts
 - R1 [approved, must] The ledger lists built items: lane, spec, builder, verifier, verdict, commit. | gate: test/board.test.js
