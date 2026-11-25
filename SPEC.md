@@ -164,6 +164,7 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - I15 [approved, must] A release is a tag on a green commit; CI publishes it to npm with provenance, never by hand. | gate: review
 - I16 [approved, aim] Init ignores the folders agent tools make inside the repo, such as .claude/worktrees/, so they never block a submit. | gate: test/init-ignore.test.js | serves: I1
 - I17 [approved, must] pullboard init and every registerProjectAndLink caller confirm the project is in the machine registry before saying registration is complete; relay on --all names every initialized board missing from the registry instead of skipping it silently. Measure: a board initialized but absent from projects.json is named by relay on --all; review 2026-12-07. | gate: review
+- I18 [draft, must] Revises I15: a release is a tag on a commit with no gate failure that passed at the previous release; a test already red at the previous release is listed in the release notes with its open item and does not block the release. CI publishes it to npm with provenance, never by hand. | gate: review
 
 ## N · Next commands
 - N1 [approved, must] The pullboard needs command lists what waits on the person and the next available steps. | gate: test/needs.test.js
