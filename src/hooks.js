@@ -10,7 +10,9 @@ import {
 } from 'node:child_process';
 import { gitBoardDataPush } from './git-sync-format.js';
 export { gitBoardDataPush };
-import { hostname } from 'node:os';
+import { distinctiveName } from './host-name.js';
+import { machineName } from './host-name.js';
+import { wholeWord } from './host-name.js';
 import {
   chmodSync,
   existsSync,
@@ -181,21 +183,28 @@ export function computerName() {
 }
 
 /**
- * This machine's names as a commit message would show them: the host name, its first label and the
- * computer name, matched case-insensitively. Names under three characters are ignored, so a short word
- * cannot refuse an honest message (C1). The sources are a parameter so a test can stand in for them.
+ * This machine's names as a commit message would show them: its own host name (machineName in
+ * src/host-name.js, which on macOS reads LocalHostName rather than a network-assigned reverse-DNS name),
+ * that name's first label and the computer name. A name under three characters or a common word such as a
+ * vendor default is dropped, so an ordinary word cannot refuse an honest message (C1). The sources are a
+ * parameter so a test can stand in for them.
  *
  * @param {{ host?: string, computer?: string | null }} [sources] - Defaults to this machine.
  * @returns {string[]} Lower-case names.
  */
-export function machineNames(sources = { host: hostname(), computer: computerName() }) {
+export function machineNames(sources = { host: machineName(), computer: computerName() }) {
   const host = String(sources.host ?? '').trim().toLowerCase();
   const computer = String(sources.computer ?? '').trim().toLowerCase();
-  return [...new Set([host, host.split('.')[0], computer])].filter((name) => name.length >= 3);
+  const short = host.split('.')[0];
+  // A full name whose first label is a common word is that word plus the network's domain; it names the
+  // network, not this computer, so it goes with its label.
+  const full = distinctiveName(short) ? host : '';
+  return [...new Set([full, short, computer])].filter(distinctiveName);
 }
 
 /**
- * Check the commits a submit adds for this machine's names in their messages (C1). With `refuse`, the
+ * Check the commits a submit adds for this machine's names in their messages (C1), each matched as a
+ * whole word in any case, so a name inside a longer word is not a match. With `refuse`, the
  * first named commit stops the submit and the next step says how to reword it; without, each named
  * commit is reported through `say` and the submit goes on. The names are never echoed, so the refusal
  * cannot leak them into a shout or a board thread.
@@ -207,13 +216,14 @@ export function machineNames(sources = { host: hostname(), computer: computerNam
  */
 export function machineNameProblems(root, range, { refuse, say, names = machineNames() }) {
   if (!names.length) return;
+  // Whole words only: a name inside a longer word ("mac" in "machine") is not the name.
+  const patterns = names.map(wholeWord);
   // The SHAs come from rev-list and each message is read on its own, so no character in a message can
   // change where another message starts or ends.
   const shas = git(root, ['rev-list', range]).split('\n').filter(Boolean);
   for (const sha of shas) {
     const message = git(root, ['log', '-1', '--format=%B', sha]);
-    const lower = message.toLowerCase();
-    if (!names.some((name) => lower.includes(name))) continue;
+    if (!patterns.some((pattern) => pattern.test(message))) continue;
     const short = sha.slice(0, 12);
     if (refuse) {
       throw new Refused('HOST_NAME', `commit ${short} names this machine in its message; a submit may not publish that name`,
