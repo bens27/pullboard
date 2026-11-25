@@ -132,11 +132,13 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 ## C · Commits
 - C1 [approved, must] Header: type(scope): subject [ids], 72 characters at most. | gate: test/hooks.test.js
 - C2 [approved, must] Cited ids exist. feat and fix commits cite at least one. | gate: test/hooks.test.js | serves: S1
-- C3 [approved, must] Pre-push runs the gate, unless this exact tree already passed it. | gate: test/e2e.test.js | serves: V4
+- C3 [approved, must] Pre-push runs the gate, unless this exact tree already passed it; a failure covered by the person's live waiver does not refuse the push. | gate: test/e2e.test.js | serves: V4
 - C4 [retired] Merged into P4, which now also says a refusal shows what it saw.
 - C5 [approved, must] Pre-commit runs the configured fixers on fully staged files and restages what they fix. | gate: test/e2e.test.js
 - C6 [approved, must] Submit refuses unless the item's commits since claim, together, cite every spec row the item cites. | gate: test/e2e.test.js | serves: C2
 - C7 [approved, must] CI runs the gate on every push and pull request, Node 22.13 and 24, on Linux and, once public, macOS. | gate: test/ci.test.js | serves: C3
+- C12 [approved, must] A gate red blocks a push or a landing only when that test passed at the last recorded trunk result; a failure inherited from trunk is listed with its item and does not block. | gate: test/gate.test.js
+- C13 [approved, must] The gate runs every test file to the end and lists every failure in one run; it never stops at the first. | gate: test/gate.test.js
 
 ## R · Receipts
 - R1 [approved, must] The ledger lists built items: lane, spec, builder, verifier, verdict, commit. | gate: test/board.test.js
