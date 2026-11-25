@@ -77,9 +77,9 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - V18 [approved, must] Accept runs the repo's install step before the frozen check; a failed install or timeout reads unverified, never red. | gate: test/e2e.test.js | serves: V2
 - V19 [approved, must] Every accept records whether a frozen check ran at the submitted commit; show and the ledger say so. | gate: test/verdict-check.test.js | serves: V8
 - V20 [approved, must] A rework after a reject that names a reproduction must add a test that reproduces that edge, shown red at the rejected head; submit names the reject's edge when the change adds no test for it, so one item does not bounce on the same cause. After a second reject with the same cause, the next submit states the premise the item rests on and the evidence that falsifies or keeps it before a third build. Measure: pullboard rigor counts of items rejected three or more times on one cause fall to zero; review 2026-12-07. | gate: review
-- V21 [draft, must] Only the person can grant an agent judgment authority: a signed, expiring grant naming the agent and the rule codes it covers (or all), under which the agent may override a refusal it judges low in materiality and risk. | gate: test/judgment.test.js
-- V22 [draft, must] Each override under a judgment grant is recorded before the move goes through: the refusal code, the commit or item, the agent's materiality and risk reasoning, and afterwards its own review of the result; a move with no record is refused. | gate: test/judgment.test.js
-- V23 [draft, must] Every recorded override waits in the person's Needs you until they mark the call right or wrong and say what made the case fit or not; a wrong call can file an item to change the rule or the grant. | gate: test/judgment.test.js
+- V21 [approved, must] Only the person can grant an agent judgment authority: a signed, expiring grant naming the agent and the rule codes it covers (or all), under which the agent may override a refusal it judges low in materiality and risk. | gate: test/judgment.test.js
+- V22 [approved, must] Each override under a judgment grant is recorded before the move goes through: the refusal code, the commit or item, the agent's materiality and risk reasoning, and afterwards its own review of the result; a move with no record is refused. | gate: test/judgment.test.js
+- V23 [approved, must] Every recorded override waits in the person's Needs you until they mark the call right or wrong and say what made the case fit or not; a wrong call can file an item to change the rule or the grant. | gate: test/judgment.test.js
 
 ## O · Options
 - O1 [approved, aim] Pullboard asks the person once whether to check for new releases, and checks only if they said yes; pullboard update upgrades on request. | gate: test/settings.test.js | serves: O5
@@ -143,7 +143,7 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - C12 [approved, must] A gate red blocks a push or a landing only when that test passed at the last recorded trunk result; a failure inherited from trunk is listed with its item and does not block. | gate: test/gate.test.js
 - C13 [approved, must] The gate runs every test file to the end and lists every failure in one run; it never stops at the first. | gate: test/gate.test.js
 - C15 [approved, must] Every test red at the trunk record has an open item that names it, opened when the red is recorded and ranked first in its lane; an inherited red is never listed without its item. | gate: test/gate.test.js
-- C16 [draft, must] The person can end a live landing waiver early from their terminal or the view, with a reason; from that moment it covers no failure, and both the waiver and its end stay in history. An agent cannot end one. | gate: test/landing-waiver-end.test.js
+- C16 [approved, must] The person can end a live landing waiver early from their terminal or the view, with a reason; from that moment it covers no failure, and both the waiver and its end stay in history. An agent cannot end one. | gate: test/landing-waiver-end.test.js
 
 ## R · Receipts
 - R1 [approved, must] The ledger lists built items: lane, spec, builder, verifier, verdict, commit. | gate: test/board.test.js
