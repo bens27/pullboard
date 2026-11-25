@@ -139,6 +139,7 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - C7 [approved, must] CI runs the gate on every push and pull request, Node 22.13 and 24, on Linux and, once public, macOS. | gate: test/ci.test.js | serves: C3
 - C12 [approved, must] A gate red blocks a push or a landing only when that test passed at the last recorded trunk result; a failure inherited from trunk is listed with its item and does not block. | gate: test/gate.test.js
 - C13 [approved, must] The gate runs every test file to the end and lists every failure in one run; it never stops at the first. | gate: test/gate.test.js
+- C15 [draft, must] Every test red at the trunk record has an open item that names it, opened when the red is recorded and ranked first in its lane; an inherited red is never listed without its item. | gate: test/gate.test.js
 
 ## R · Receipts
 - R1 [approved, must] The ledger lists built items: lane, spec, builder, verifier, verdict, commit. | gate: test/board.test.js
