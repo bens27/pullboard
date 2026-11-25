@@ -271,7 +271,10 @@ test('indexed legacy fact outcomes match the original lookup [B29,B31,C7]', (t) 
       if (table === 'event_archive' && !archive.length) continue;
       for (const [eventId, detail] of data) {
         const value = detail?.jsonb ? db.prepare('SELECT jsonb(?) AS value').get(detail.jsonb).value : detail;
-        db.prepare(`INSERT INTO ${table} VALUES (?,'fact',?)`).run(eventId, value);
+        // Node 26 refuses an unsafe lastInsertRowid as a number; ids past 2^53 need BigInt run results.
+        const insert = db.prepare(`INSERT INTO ${table} VALUES (?,'fact',?)`);
+        insert.setReadBigInts(true);
+        insert.run(eventId, value);
       }
     }
     const history = archive.length ? '(SELECT * FROM event UNION ALL SELECT * FROM event_archive)' : 'event';
