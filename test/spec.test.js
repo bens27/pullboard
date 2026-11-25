@@ -574,6 +574,7 @@ test("spec answer records the person's choice [S1,E3,P6]", (t) => {
     ['B1', 'approve', 'Postgres', 'Which store holds the data: Postgres. Choices: SQLite, Postgres.'],
     'a listed choice matches in any case and keeps its listed spelling');
   assert.equal(record.by, 'person');
+  assert.equal(new Date(record.on).toISOString(), record.on, 'answer records when it was made');
   assert.equal(readFileSync(file, 'utf8'), before, 'the answer waits for the coordinator apply, as an approval does');
   assert.match(box.run('show', 'B1').stdout, /answered Postgres, pending apply/u);
   const board = new DatabaseSync(join(box.root, '.git', 'pullboard', 'board.sqlite'));

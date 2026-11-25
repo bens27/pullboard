@@ -500,7 +500,10 @@ test('[B26,S18,S19] signer-required approval signs the exact applied row and tam
 
   const approve = command(box, box.root, 'spec', 'approve', 'G1', '--by', 'CO', '--json');
   assert.equal(approve.status, 0, `${approve.stdout}${approve.stderr}`);
-  assert.ok(JSON.parse(approve.stdout).decisions[0].signature, 'approval carries its signature before any source apply');
+  const [decision] = JSON.parse(approve.stdout).decisions;
+  assert.equal(decision.by, 'CO');
+  assert.equal(new Date(decision.on).toISOString(), decision.on, 'approval records when it was made');
+  assert.ok(decision.signature, 'approval carries its signature before any source apply');
   assert.equal(sourceRow(box, SPEC_FILE, 'G1').status, 'draft');
   assert.equal(existsSync(join(box.root, '.pullboard', 'signoffs.jsonl')), false, 'signing the pending decision writes no checkout receipt');
   const applied = command(box, box.root, 'spec', 'apply', '--json');

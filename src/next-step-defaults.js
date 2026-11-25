@@ -337,6 +337,7 @@ export const DEFAULT_NEXT_STEPS = Object.freeze({
   "RELAY_BASELINE_UNCERTAIN": "run the command again when the relay answers; it first checks whether the relay kept the board upload",
   "RELAY_BOARD_DELETED": "keep working locally, or run pullboard relay on to link the board again",
   "RELAY_BUSY": "run the command again after the other worktree finishes sending",
+  "RELAY_MOVE_TOO_LARGE": "run pullboard status; if the move was not queued, retry with less text or fewer entries; if it is queued, keep the outbox and ask the coordinator before relinking",
   "RELAY_OUTBOX": "keep the relay-outbox.sealed file and the board as they are, then ask for help before relinking",
   "RELAY_OUTBOX_UNBOUND": "run the command again once the relay answers; pullboard status shows when the outbox has gone up",
   "RELAY_OUTBOX_PENDING": "run pullboard status once the relay answers; it sends the queued moves in order first",
