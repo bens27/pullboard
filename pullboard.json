@@ -1,7 +1,7 @@
 {
   "name": "pullboard",
   "itemSizeBudget": 150,
-  "maintainers": ["olevicor@icloud.com"],
+  "maintainers": ["olevicor@icloud.com", "ben@clearmethodstudio.com"],
   "gate": "npm run gate",
   "affectedTests": "node bin/run-tests.js",
   "submitGate": "landing",
