@@ -67,12 +67,18 @@ test('run builds routed items unattended: the failure feeds the next attempt; re
     '#!/bin/sh',
     'mkdir -p web api',
     'if [ "$PULLBOARD_ITEM" = "1" ]; then',
-    '  if [ "$PULLBOARD_ATTEMPT" = "1" ]; then echo "export const title = \'Hello\';" > web/page.js; echo stray > api/stray.js;',
+    '  if [ "$PULLBOARD_ATTEMPT" = "1" ]; then echo "export const title = \'Hello\';" > web/page.js; echo stray > api/stray.js; sleep 300;',
     '  elif grep -q "The check" "$PULLBOARD_PACK"; then echo "export const title = \'Hi\';" > web/page.js; fi',
     'else',
     '  echo "export const footer = \'nope\'; // $PULLBOARD_CHECK $PULLBOARD_TIER" | tr B b > web/footer.js',
     'fi',
     '',
+  ].join('\n'));
+  // Accelerate only the CLI's two-minute agent/check timer, keeping the real subprocess and its cleanup.
+  const clock = join(box.dir, 'runner-timeout.mjs');
+  writeFileSync(clock, [
+    'const schedule = globalThis.setTimeout;',
+    'globalThis.setTimeout = (work, delay, ...args) => schedule(work, delay === 120_000 ? 500 : delay, ...args);',
   ].join('\n'));
   const brief = (file) => LIGHT_BRIEF.replace('web/page.js', file);
   const has = (file, text) => `grep -q ${text} ${file}`;
@@ -82,15 +88,24 @@ test('run builds routed items unattended: the failure feeds the next attempt; re
   const light = made.out.match(/^made (\S+) /)[1];
   assert.match(box.run(box.repo, 'run', '--agent', `sh ${agent}`).err, /MAIN_IS_COORDINATOR/);
   assert.match(box.run(light, 'run', '--agent-mid', `sh ${agent}`).err, /ROUTE.*joined on the light route, so it cannot take mid items/);
-  const ran = box.run(light, 'run', '--agent-light', `sh ${agent}`, '--attempts', '2', '--minutes', '2');
-  assert.equal(ran.code, 0, ran.err);
+  const args = ['run', '--agent-light', `sh ${agent}`, '--attempts', '2', '--minutes', '2'];
+  const result = spawnSync(process.execPath, ['--import', clock, BIN, ...args, '--items', '1'],
+    { cwd: light, env: box.env, encoding: 'utf8' });
+  const first = { code: result.status, out: result.stdout, err: result.failure ?? result.stderr };
+  assert.equal(first.code, 0, first.err);
+  assert.match(first.out, /runner done: 1 submitted, 0 escalated/);
+  assert.equal(JSON.parse(box.run(box.repo, 'show', '2', '--json').out).item_status, 'open');
+  const secondRun = box.run(light, ...args);
+  assert.equal(secondRun.code, 0, secondRun.err);
+  assert.match(secondRun.out, /runner done: 0 submitted, 1 escalated/);
+  const ran = { out: first.out + secondRun.out };
   assert.match(ran.out, /#1 attempt 1: red[\s\S]*#1 attempt 2: green \(agent \d+s, check \d+s\)\n[1-9]\d* lane updates; details remain on the board\nsubmitted #1 at [0-9a-f]{12};/);
   assert.match(ran.out, /nothing left to run: no open light runnable items in the web lane/);
   assert.match(ran.out, /#2 attempt 2: red[\s\S]*#2 escalated light -> mid; the attempt is pinned at refs\/pullboard\/attempts\/2\//);
-  assert.match(ran.out, /runner done: 1 submitted, 1 escalated/);
   const packs = join(box.dir, 'repo', '.git', 'worktrees', light.split('/').at(-1), 'pullboard', 'packs');
   const second = readFileSync(join(packs, '1-light-2.md'), 'utf8');
   assert.equal(existsSync(join(packs, '1-light-1.log')), true);
+  assert.match(second, /The agent ran out of time after 2 minutes/);
   assert.match(second, /reverted your changes outside the brief's files: api\/stray.js/);
   assert.match(second, /### web\/page.js\n```\nexport const title = 'Hello';/);
   assert.equal(existsSync(join(light, 'api', 'stray.js')), false);

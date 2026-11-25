@@ -72,7 +72,11 @@ export default { operation: ${JSON.stringify(name)}, order: ${engine + 1000}, en
 
 test('today\'s move order, actors, refusal recovery text and recorded SQLite prefix are unchanged [C7,V4,H3,H16]', t => {
   assert.deepEqual(ENGINE_OPERATIONS.filter(operation => !REHOME_OPERATIONS.includes(operation)), SNAPSHOT.operations);
-  assert.deepEqual(NEXT_STEPS, { ...SNAPSHOT.nextSteps, ...REHOME_STEPS });
+  assert.deepEqual(NEXT_STEPS, {
+    ...SNAPSHOT.nextSteps,
+    ...REHOME_STEPS,
+    RELAY_MOVE_TOO_LARGE: 'run pullboard status; if the move was not queued, retry with less text or fewer entries; if it is queued, keep the outbox and ask the coordinator before relinking',
+  });
   assert.equal(minimumMoveEngine('recordProofRun', [{ landingFence: {}, receipt: { environment: {} } }, { cause: 'conflict:new' }]), PROOF_RUN_ENGINE);
   assert.equal(MOVE_REGISTRY.recordProofRun.engine, PROOF_RUN_ENGINE);
   assert.equal(MOVE_REGISTRY.recordProofRun.itemIdFirstArgument, false);
