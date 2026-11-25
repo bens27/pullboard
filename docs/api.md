@@ -119,6 +119,10 @@ For example: `flow: review wait average 61 min (1 measured; > 60 min); bottlenec
 | `milestone edit` | `version:number`, `milestone:object` |
 | `milestone remove` | `version:number`, `milestone:object` |
 | `milestone ship` | `version:number`, `milestone:object`, `into:string|null`, `moved:array`, `notMoved:array` |
+| `ask` | `version:number`, `ask:object` |
+| `ask done` | `version:number`, `ask:object` |
+| `ask drop` | `version:number`, `ask:object` |
+| `needs` | `version:number`, `root:string`, `needs:array` |
 | `companion` | `version:number`, `item:object`, `created:boolean` |
 | `show` | `version:number`, `item_id:number`, `item_title:string`, `item_lane:string`, `item_status:string`, `verdicts:array`, `thread:array` |
 | `stats` | `version:number`, `stats:object`, `gateWaits:array` |
