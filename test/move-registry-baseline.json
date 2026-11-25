@@ -6755,6 +6755,7 @@
     "LAND_PERSON_ONLY": "ask the person to waive it from their terminal or pullboard view",
     "LAND_PUSH": "inspect the remote and hooks, then pullboard land --adopt",
     "LAND_REMOTE_MOVED": "inspect the remote branch, then pullboard land --adopt",
+    "LAND_SIGNOFF": "set the maintainers in pullboard.json on the trunk to include the landing author's email, then run pullboard land",
     "LAND_TEST_DEFECT": "commit a correction to the test named by the held defect, or ask the person for an expiring test waiver; then run pullboard land again",
     "LAND_TRUNK": "check the recorded trunk branch with pullboard resume, then switch the main checkout to that branch: git switch <trunk-branch>",
     "LAND_TRUNK_MOVED": "rebuild the batch from the new main: pullboard land",
