@@ -237,6 +237,7 @@ export const DEFAULT_NEXT_STEPS = Object.freeze({
   "LAND_MERGE": "inspect the landing worktree and its hooks, then pullboard land --adopt",
   "LAND_MOVED": "read pullboard resume, then adopt the current batch: pullboard land --adopt",
   "LAND_PUSH": "inspect the remote and hooks, then pullboard land --adopt",
+  "LAND_SIGNOFF": "set the maintainers in pullboard.json on the trunk to include the landing author's email, then run pullboard land",
   "LAND_REMOTE_MOVED": "inspect the remote branch, then pullboard land --adopt",
   "LAND_TRUNK": "check the recorded trunk branch with pullboard resume, then switch the main checkout to that branch: git switch <trunk-branch>",
   "LAND_TRUNK_MOVED": "rebuild the batch from the new main: pullboard land",

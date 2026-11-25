@@ -52,11 +52,16 @@ function signedByAuthor(message, author) {
   });
 }
 
-/** Keep the missing-sign-off refusal to one line with the concrete fix [C1]. */
+/**
+ * Keep the missing-sign-off refusal to one line with the concrete fix [C1].
+ * It shows the author address it checked, because a maintainer whose Git email is not the listed one
+ * (a landing machine, say) cannot otherwise tell which address pullboard.json is missing.
+ */
 function signoffProblem(message, author, maintainers, commit = null) {
   if (maintainers.includes(author.email) || signedByAuthor(message, author)) return null;
   return 'pullboard sign-off: ' + (commit ? 'commit ' + commit.slice(0, 12) : 'this outside commit')
-    + ' needs Signed-off-by matching its author; git commit --amend -s';
+    + ` by ${author.email} needs Signed-off-by matching its author; git commit --amend -s,`
+    + ` or, if that author maintains this repo, add "${author.email}" to maintainers in pullboard.json`;
 }
 
 /** Check every new non-merge commit; a merge wrapper does not substitute for its parents. */

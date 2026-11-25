@@ -246,6 +246,26 @@ async function save(state, patch) {
   return state.batch;
 }
 
+/**
+ * Amend the landing tip in place; a refused amend blocks the batch and reports why [C1,C7,B3].
+ * The amend is the lander's own commit, so the sign-off hook checks the lander's Git author. Thrown raw, its
+ * failure left the batch in 'merging' as an opaque LAND_WORKER (2026-11-25); blocked, the next land starts afresh.
+ */
+async function amendLandingTip(state, itemId) {
+  const { root } = state.batch;
+  const result = tryGit(root, ['commit', '--amend', '--no-edit']);
+  if (result.status === 0) return;
+  const said = `${result.stderr}\n${result.stdout}`.split('\n').find((line) => line.startsWith('pullboard sign-off: '));
+  const author = tryGit(root, ['log', '-1', '--format=%ae', 'HEAD']).stdout;
+  await save(state, { state: 'blocked' });
+  if (said) {
+    // The step starts with a verb nextStepFor reads, because the landing worker forwards only the code and message.
+    const next = `set the maintainers in pullboard.json on ${state.batch.branch.replace(/^refs\/heads\//u, '')} to include "${author}", then run pullboard land`;
+    throw new Refused('LAND_SIGNOFF', `the sign-off hook refused the landing commit for #${itemId}: its author ${author} is not in maintainers; ${next}`, next);
+  }
+  throw new Refused('LAND_MERGE', `amending the landing merge of #${itemId} failed: ${result.stderr || result.stdout}; inspect ${root} and its hooks, then run pullboard land`);
+}
+
 /** Merge one ordered group from the immutable batch base, preserving each first-containing commit. */
 async function mergeGroup(state, items) {
   await state.checkLease();
@@ -298,7 +318,7 @@ async function mergeGroup(state, items) {
       && writeFormatTable(batch.root) && !engines.files.includes('docs/formats.md')) engines.files.push('docs/formats.md');
     if (engines.files.length) {
       git(batch.root, ['add', '--', ...engines.files]);
-      git(batch.root, ['commit', '--amend', '--no-edit']);
+      await amendLandingTip(state, item.item_id);
       for (const engine of engines.assigned) state.say(`engine ${engine.name}: ${engine.number} for #${item.item_id}`);
     }
     const first = git(batch.root, ['rev-list', '--first-parent', '--reverse', 'HEAD']).split('\n')
@@ -313,7 +333,7 @@ async function mergeGroup(state, items) {
       const parents = git(batch.root, ['rev-list', '--parents', '-n', '1', tip]).split(' ');
       if (tip !== batch.base && parents.length === 3 && merged.some(entry => entry.merge === tip)) {
         // Badges belong to the final item merge, preserving its parents/trailer and first-containing receipt.
-        git(batch.root, ['commit', '--amend', '--no-edit']);
+        await amendLandingTip(state, merged.find(entry => entry.merge === tip).id);
         const refreshed = headCommit(batch.root);
         for (const entry of merged) if (entry.merge === tip) entry.merge = refreshed;
       } else {
