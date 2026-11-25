@@ -12,6 +12,7 @@ import { createRelayAuth, ACCESS_WINDOW_MS } from '../relay/auth.js';
 import { serveRelay } from '../relay/service.js';
 import { githubFixture } from './relay-fixture.js';
 import { relayClientFixture } from './relay-client-fixture.js';
+import { queuedAutomaticReopen } from './relay-queued-reopen-fixture.js';
 import { serveView } from '../src/serve.js';
 import { fetchFresh } from './http-fixture.js';
 import { fetchPrintedViewLink } from './view-link-fixture.js';
@@ -1474,3 +1475,5 @@ test('every real CLI relay request declares its engine including sign-in, reads,
 import { deletedCopyRelinks, relayOnClearsExclusion, assertPersonUnlinkHistory } from './relay-exclusion-fixture.js';
 test('a deleted relay copy relinks rather than excluding the board [H5,H17]', deletedCopyRelinks);
 test('relay on clears an exclusion and names it [H5,H17,B26]', relayOnClearsExclusion);
+
+test('a locally applied automatic reopen drains with later relay moves while a fresh reopen is refused [H16,V4]', queuedAutomaticReopen);
