@@ -288,6 +288,29 @@ test('a submit naming a stand-in host refuses at HOST_NAME, and only warns when 
     (error) => error.code === 'HOST_NAME' && /names this machine/u.test(error.message), 'a stand-in computer name is refused');
 });
 
+test('a generic network-assigned host name lets ordinary words through, and a distinctive own name is still refused at HOST_NAME [C1]', () => {
+  const box = sandbox();
+  const { repo } = project('true', box);
+  const network = 'Mac.phub.net.cable.rogers.com';
+  // The network hands out a common word; with no own name to read, it is the only name, and it gets no word rule.
+  const generic = machineNames({ host: network, computer: null });
+  assert.ok(!generic.includes('mac'), 'the common word is not one of the names');
+  const base = box.git(repo, 'rev-parse', 'HEAD');
+  box.git(repo, 'commit', '-q', '--allow-empty', '-m', 'chore: run on any machine and on macOS\n\nThe Mac build and the machine list agree.');
+  machineNameProblems(repo, `${base}..HEAD`, { refuse: true, say: () => {}, names: generic });
+  // A distinctive own name still refuses, as a whole word and in any case, and only as a whole word.
+  const own = machineNames({ host: 'workbench-7', computer: null });
+  const said = [];
+  box.git(repo, 'commit', '-q', '--allow-empty', '-m', 'chore: the workbench-7x and preworkbench-7 builds');
+  machineNameProblems(repo, 'HEAD~1..HEAD', { refuse: true, say: (line) => said.push(line), names: own });
+  assert.deepEqual(said, [], 'a longer word containing the name is not the name');
+  const second = box.git(repo, 'rev-parse', 'HEAD');
+  box.git(repo, 'commit', '-q', '--allow-empty', '-m', 'chore: logs from WORKBENCH-7 show the stall');
+  assert.throws(() => machineNameProblems(repo, `${second}..HEAD`, { refuse: true, say: () => {}, names: own }),
+    (error) => error.code === 'HOST_NAME' && /names this machine/u.test(error.message) && /reword that commit's message/u.test(error.next),
+    'the own name is refused with its next step');
+});
+
 test('a stand-in host after a field separator in a commit body is still refused [C1]', () => {
   const box = sandbox();
   const { repo } = project('true', box);

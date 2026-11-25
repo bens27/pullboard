@@ -14,12 +14,13 @@ import { realpathSync } from 'node:fs';
 import { rmSync } from 'node:fs';
 import { writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { hostname } from 'node:os';
 import { networkInterfaces } from 'node:os';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
+import { hostRule } from '../src/host-name.js';
+import { machineName } from '../src/host-name.js';
 
 const ROOT = resolve(import.meta.dirname, '..');
 /** The files that hold these patterns to test them; every other tracked file is scanned. */
@@ -33,51 +34,6 @@ const MACHINES = ['Stu' + 'dio', 'Mac' + 'Book', 'M' + 'BP'];
 /** Escape text for a regular expression. */
 function literal(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-}
-
-/**
- * Host names that are ordinary words or vendor defaults. They name no one, so they are not private, and as a search
- * pattern they would match ordinary prose ("Mac" is in hundreds of tracked lines).
- */
-const GENERIC_HOSTS = new Set(['localhost', 'mac', 'imac', 'macmini', 'host', 'server', 'desktop', 'laptop', 'computer',
-  'pc', 'workstation', 'ubuntu', 'debian', 'fedora', 'linux', 'raspberrypi', 'runner', 'box', 'node', 'machine']);
-
-/**
- * This machine's own name. On macOS that is `scutil --get LocalHostName`: os.hostname() there falls back to whatever
- * name the current network hands out by reverse DNS (for example "Mac.<isp>.com"), so it changes with the network and
- * is often a common word. Elsewhere, or when scutil fails or prints nothing, os.hostname().
- *
- * @param {{ platform?: string, localHostName?: () => string, osHostname?: () => string }} [sources] - stand-ins for tests
- * @returns {string}
- */
-function machineName({ platform = process.platform, localHostName = scutilLocalHostName, osHostname = hostname } = {}) {
-  if (platform === 'darwin') {
-    try {
-      const name = localHostName().trim();
-      if (name) return name;
-    } catch { /* scutil missing or slow: fall back below */ }
-  }
-  return osHostname();
-}
-
-/** The macOS LocalHostName, read with a short timeout so a stalled scutil cannot hang the test. */
-function scutilLocalHostName() {
-  return execFileSync('scutil', ['--get', 'LocalHostName'], { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] });
-}
-
-/**
- * The 'this host name' rule for a host, or none. The short name (before the first dot) becomes a whole-word pattern
- * when it is distinctive. A short name under 3 characters or in GENERIC_HOSTS gets no rule: a common word is not a
- * private name, and searching for it would report every ordinary use. Every other name keeps its rule, so a
- * distinctive name is never dropped; only that fixed list of common words is.
- *
- * @param {string} host
- * @returns {{ name: string, pattern: RegExp }[]}
- */
-function hostRule(host) {
-  const short = host.split('.')[0];
-  if (short.length < 3 || GENERIC_HOSTS.has(short.toLowerCase())) return [];
-  return [{ name: 'this host name', pattern: new RegExp(`\\b${literal(short)}\\b`, 'iu') }];
 }
 
 /**
