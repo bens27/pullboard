@@ -9,7 +9,8 @@ import * as store from '../src/board.js';
 import { applyEngineMove, prepareEngineMove } from '../src/engine.js';
 import { exportBoard, importBoard, restoreRelaySnapshot, semanticBoardDigest } from '../src/exchange.js';
 import { assertLandingLease } from '../src/landing-lease.js';
-import { LANDING_LOCAL_PREFIX, localLandingEntry } from '../src/landing-local-lease.js';
+import { spawnSync } from 'node:child_process';
+import { LANDING_LOCAL_PREFIX, forgetLocalLanding, localLandingEntry, rememberLocalLanding } from '../src/landing-local-lease.js';
 import { takeLandingResource } from '../src/landing-resource.js';
 import { LANDING_LEASE_ENGINE } from '../src/landing-lease-engine.js';
 
@@ -99,6 +100,70 @@ test('physical heartbeat identity cannot attach to another board or arrive in an
   } finally { await lease.release(); }
 });
 
+
+/** A real process ID that has already exited and been reaped on this computer. */
+function deadPid() {
+  return spawnSync(process.execPath, ['-e', '']).pid;
+}
+
+/** Queue one invocation through a real receipt and record it locally exactly as takeLandingResource does. */
+function queueLocal(box, board, pid) {
+  const request = { agentId: 'coordinator', action: 'request', token: randomUUID(), branch: 'refs/heads/main', pid, localHeartbeat: true };
+  const result = box.move(board, 'landingLeaseMove', [request]);
+  const acknowledged = result.acquired ? result.holder : store.landingLeaseState(board).line.find(entry => entry.token === request.token);
+  rememberLocalLanding(board, acknowledged);
+  return request;
+}
+
+/** Fail on the first wait, so a lease that would wait without end fails the test instead of hanging it. */
+function refuseWait(waits) {
+  return async wait => { waits.push(wait); throw new Error(`landing waited at place ${wait.position} behind ${wait.holders[0]?.label}`); };
+}
+
+test('a killed landing promoted from the line on a linked board, and killed waiters, never block the next land on this computer [Q1,Q3,H16]', async t => {
+  const box = fixture(t); const [board] = box.boards;
+  const first = queueLocal(box, board, deadPid());
+  const killedWaiter = queueLocal(box, board, deadPid()); // killed while it waited behind the first landing.
+  box.move(board, 'landingLeaseMove', [{ ...first, action: 'release', generation: 1 }]);
+  forgetLocalLanding(board, first.token);
+  const later = [queueLocal(box, board, deadPid()), queueLocal(box, board, deadPid())]; // each request promotes or queues, then is killed.
+  const stuck = store.landingLeaseState(board);
+  assert.equal(stuck.holder.token, killedWaiter.token, 'a later request promoted the killed waiter to holder');
+  assert.notEqual(stuck.holder.lineage, null, 'the board is relay-linked');
+  assert.equal(stuck.line.length, 2, 'killed waiters held places in the line');
+  const waits = [];
+  const lease = await takeLandingResource({ board, branch: 'refs/heads/main', onWait: refuseWait(waits),
+    write: async (operation, args) => box.move(board, operation, args) });
+  try {
+    assert.deepEqual(waits, [], 'the next land on this computer took the lease without waiting');
+    const state = store.landingLeaseState(board);
+    assert.equal(state.holder.token, lease.fence.token);
+    assert.deepEqual(state.line, [], 'dead waiters hold no place');
+    for (const request of [killedWaiter, ...later]) {
+      assert.equal(board.db.prepare('SELECT 1 FROM board_meta WHERE meta_key=?').get(LANDING_LOCAL_PREFIX + request.token), undefined);
+    }
+  } finally { await lease.release(); }
+});
+
+test('a live landing on this computer and a holder from another computer still keep the trunk [Q1,Q3,H16]', async t => {
+  const box = fixture(t); const [board, replica] = box.boards;
+  const live = queueLocal(box, board, process.pid);
+  const waits = [];
+  await assert.rejects(takeLandingResource({ board, branch: 'refs/heads/main', onWait: refuseWait(waits),
+    write: async (operation, args) => box.move(board, operation, args) }), /landing waited at place 1/u);
+  assert.equal(store.landingLeaseState(board).holder.token, live.token, 'a live local holder is respected');
+  importBoard(replica, exportBoard(board));
+  box.move(replica, 'landingLeaseMove', [{ ...live, action: 'release', generation: 1 }]);
+  const foreign = { agentId: 'coordinator', action: 'request', token: randomUUID(), branch: 'refs/heads/main', pid: deadPid(), localHeartbeat: true };
+  box.move(replica, 'landingLeaseMove', [foreign]); // another computer records no local entry on this board, so its PID means nothing here.
+  const foreignWaiter = { ...foreign, token: randomUUID(), pid: deadPid() };
+  box.move(replica, 'landingLeaseMove', [foreignWaiter]);
+  await assert.rejects(takeLandingResource({ board: replica, branch: 'refs/heads/main', onWait: refuseWait(waits),
+    write: async (operation, args) => box.move(replica, operation, args) }), /landing waited at place 2/u);
+  const state = store.landingLeaseState(replica);
+  assert.equal(state.holder.token, foreign.token, 'a holder on another computer is never released by PID');
+  assert.deepEqual(state.line.map(entry => entry.token), [foreignWaiter.token], 'a foreign waiter keeps its place');
+});
 
 test('historical landing lease receipts retain their original renewal events [Q1,H16]', t => {
   const box = fixture(t); const [board] = box.boards;

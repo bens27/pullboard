@@ -9,23 +9,37 @@ import {
 import { Refused } from './refused.js';
 import { coordinatorHolder } from './coordinator-hold.js';
 import {
-  localLandingEntry,
+  localLandingObservation,
   rememberLocalLanding,
   forgetLocalLanding,
 } from './landing-local-lease.js';
 
-/** A dead local owner can be released immediately on an unlinked board; never compare foreign PIDs. */
-function deadLocalOwner(holder, local) {
-  if (!holder || holder.lineage !== null && !local) return false;
-  try { process.kill(holder.pid, 0); return false; }
+/** True only when an entry's landing process and any owned guardian are both gone from this computer. */
+function processGone(entry) {
+  try { process.kill(entry.pid, 0); return false; }
   catch (error) {
     if (error.code !== 'ESRCH') return false;
-    if (holder.guardianPid) {
-      try { process.kill(holder.guardianPid, 0); return false; }
+    if (entry.guardianPid) {
+      try { process.kill(entry.guardianPid, 0); return false; }
       catch (guardianError) { return guardianError.code === 'ESRCH'; }
     }
     return true;
   }
+}
+
+/**
+ * Whether a holder or waiter left by a stopped landing on this computer may be released now [Q1,Q3,H16].
+ * A linked entry counts as local only when this physical board recorded it, so a foreign PID is never probed. Any
+ * generation of that record counts: a killed waiter promoted by a later request keeps its queued record, and an exact
+ * lookup left it holding the trunk for ever. A holder whose local heartbeat lapsed is stale even if its PID was
+ * reused; a waiter is dropped only when its process is gone, so a slow live waiter keeps its place.
+ */
+function staleLocalLanding(board, entry, { holder }) {
+  if (!entry) return false;
+  const local = localLandingObservation(board, entry);
+  if (entry.lineage !== null && !local) return false;
+  if (holder && local && Date.parse(local.until) <= board.clock.now().getTime()) return true;
+  return processGone(entry);
 }
 
 /** Return a generation-bound lease whose renewal failures prevent later landing writes. */
@@ -65,10 +79,12 @@ export async function takeLandingResource({ board, write, branch, onWait, onLost
     while (true) {
       if (queued) await refresh();
       const state = landingLeaseState(board);
-      const holder = state.holder;
-      const local = localLandingEntry(board, holder);
-      if (deadLocalOwner(holder, local) || local && Date.parse(local.until) <= board.clock.now().getTime()) {
-        await write('landingLeaseMove', [{ agentId: 'coordinator', action: 'release', token: holder.token, generation: holder.generation }]);
+      const stale = [state.holder, ...state.line].filter((entry, index) => entry && entry.token !== token
+        && staleLocalLanding(board, entry, { holder: index === 0 }));
+      for (const entry of stale) {
+        // Release is token-bound for waiters and generation-bound for the holder, so a successor is never cleared.
+        await write('landingLeaseMove', [{ agentId: 'coordinator', action: 'release', token: entry.token, generation: entry.generation ?? null }]);
+        forgetLocalLanding(board, entry.token);
       }
       let result;
       const current = landingLeaseState(board);

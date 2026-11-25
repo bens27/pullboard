@@ -3,13 +3,23 @@ export const LANDING_LOCAL_PREFIX = 'local:landing-lease:';
 
 /** Read only an exact invocation's local observation; malformed local state grants no authority. */
 export function localLandingEntry(board, entry) {
+  const value = localLandingObservation(board, entry);
+  return value && value.generation === (entry.generation ?? null) ? value : null;
+}
+
+/**
+ * Read this physical board's record of an invocation at any generation. It proves only that the process ran on this
+ * computer, so its pid may be probed; it never grants authority. A waiter promoted to holder by another command's
+ * request keeps its queued (generation-less) record, which the exact lookup no longer matches [Q1,Q3,H16].
+ */
+export function localLandingObservation(board, entry) {
   if (!entry) return null;
   const row = board.db.prepare('SELECT meta_value FROM board_meta WHERE meta_key=?').get(LANDING_LOCAL_PREFIX + entry.token);
   try {
     const value = row && JSON.parse(row.meta_value);
     const boardId = board.db.prepare("SELECT meta_value FROM board_meta WHERE meta_key='board_id'").get()?.meta_value;
     return value && value.boardId === boardId && value.branch === entry.branch && value.pid === entry.pid && value.lineage === entry.lineage
-      && value.generation === (entry.generation ?? null) && Number.isFinite(Date.parse(value.until)) ? value : null;
+      && Number.isFinite(Date.parse(value.until)) ? value : null;
   } catch { return null; }
 }
 
