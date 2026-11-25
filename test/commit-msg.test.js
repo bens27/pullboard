@@ -98,6 +98,8 @@ test('an outside commit without a sign-off is refused with its fix [C1,C7]', () 
   const missing = box.tryGit(repo, 'commit', '-q', '-m', 'chore: contribute outside work');
   assert.notEqual(missing.status, 0, 'the installed commit-msg hook must refuse an unsigned outside author');
   assert.match(missing.stderr, /git commit --amend -s/u);
+  assert.match(missing.stderr, /outside@example\.com/u, 'the refusal shows the author address missing from maintainers');
+  assert.match(missing.stderr, /add "outside@example\.com" to maintainers in pullboard\.json/u, 'the refusal names the other fix');
   assert.equal(missing.stderr.trim().split('\n').length, 1, 'the refusal is one actionable line');
   const wrong = box.tryGit(repo, 'commit', '-q', '-s', '-m', 'chore: contribute outside work');
   assert.notEqual(wrong.status, 0, 'the member committer sign-off cannot stand in for the outside author');
