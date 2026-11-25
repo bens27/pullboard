@@ -36,17 +36,61 @@ function literal(text) {
 }
 
 /**
+ * Host names that are ordinary words or vendor defaults. They name no one, so they are not private, and as a search
+ * pattern they would match ordinary prose ("Mac" is in hundreds of tracked lines).
+ */
+const GENERIC_HOSTS = new Set(['localhost', 'mac', 'imac', 'macmini', 'host', 'server', 'desktop', 'laptop', 'computer',
+  'pc', 'workstation', 'ubuntu', 'debian', 'fedora', 'linux', 'raspberrypi', 'runner', 'box', 'node', 'machine']);
+
+/**
+ * This machine's own name. On macOS that is `scutil --get LocalHostName`: os.hostname() there falls back to whatever
+ * name the current network hands out by reverse DNS (for example "Mac.<isp>.com"), so it changes with the network and
+ * is often a common word. Elsewhere, or when scutil fails or prints nothing, os.hostname().
+ *
+ * @param {{ platform?: string, localHostName?: () => string, osHostname?: () => string }} [sources] - stand-ins for tests
+ * @returns {string}
+ */
+function machineName({ platform = process.platform, localHostName = scutilLocalHostName, osHostname = hostname } = {}) {
+  if (platform === 'darwin') {
+    try {
+      const name = localHostName().trim();
+      if (name) return name;
+    } catch { /* scutil missing or slow: fall back below */ }
+  }
+  return osHostname();
+}
+
+/** The macOS LocalHostName, read with a short timeout so a stalled scutil cannot hang the test. */
+function scutilLocalHostName() {
+  return execFileSync('scutil', ['--get', 'LocalHostName'], { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] });
+}
+
+/**
+ * The 'this host name' rule for a host, or none. The short name (before the first dot) becomes a whole-word pattern
+ * when it is distinctive. A short name under 3 characters or in GENERIC_HOSTS gets no rule: a common word is not a
+ * private name, and searching for it would report every ordinary use. Every other name keeps its rule, so a
+ * distinctive name is never dropped; only that fixed list of common words is.
+ *
+ * @param {string} host
+ * @returns {{ name: string, pattern: RegExp }[]}
+ */
+function hostRule(host) {
+  const short = host.split('.')[0];
+  if (short.length < 3 || GENERIC_HOSTS.has(short.toLowerCase())) return [];
+  return [{ name: 'this host name', pattern: new RegExp(`\\b${literal(short)}\\b`, 'iu') }];
+}
+
+/**
  * The rules, built for this machine: what counts as a quote of the owner, a machine name, this host's name, one of
  * its private network addresses, or this user's home folder.
  *
  * @param {{ host?: string, addresses?: string[], home?: string }} [machine] - stand-ins for tests
  */
-function rules({ host = hostname(), addresses = privateAddresses(), home = homedir() } = {}) {
-  const short = host.split('.')[0];
+function rules({ host = machineName(), addresses = privateAddresses(), home = homedir() } = {}) {
   return [
     { name: 'an owner quote', pattern: /\b[Tt]he person, \d{1,2} [A-Z][a-z]{2}\b/u },
     { name: 'a private machine name', pattern: new RegExp(`\\b(?:${MACHINES.join('|')})\\b`, 'u') },
-    ...(short.length >= 3 && !/^localhost$/iu.test(short) ? [{ name: 'this host name', pattern: new RegExp(`\\b${literal(short)}\\b`, 'iu') }] : []),
+    ...hostRule(host),
     ...addresses.map((address) => ({ name: 'a private network address of this machine', pattern: new RegExp(`(?<![\\d.])${literal(address)}(?![\\d])`, 'u') })),
     { name: 'a home folder', pattern: new RegExp(`(?:${literal(home)}|/(?:Users|home)/(?!(?:${[...PLACEHOLDER_HOMES].join('|')})\\b)[A-Za-z][\\w.-]*)(?=/|\\b)`, 'u') },
   ];
@@ -147,6 +191,22 @@ test('each privacy rule refuses a planted case in a tracked file and in a commit
   }
   const clean = planted(t, { file: 'SSH_CONNECTION=10.0.0.1 22 and /Users/private/project are placeholders\n' });
   assert.deepEqual(privacyProblems(clean.root, { range: clean.range, machine: STAND_IN }), [], 'placeholders and addresses of no machine pass');
+});
+
+test('the host rule uses the machine\'s own name, not a network-assigned one, and never a common word [C7]', (t) => {
+  const network = () => 'Mac.phub.net.cable.rogers.com';
+  const own = machineName({ platform: 'darwin', localHostName: () => 'workbench-7\n', osHostname: network });
+  assert.equal(own, 'workbench-7', 'on macOS the LocalHostName wins over the reverse-DNS name');
+  assert.equal(machineName({ platform: 'darwin', localHostName: () => { throw new Error('no scutil'); }, osHostname: network }), network(), 'a failed scutil falls back');
+  assert.equal(machineName({ platform: 'darwin', localHostName: () => '  \n', osHostname: network }), network(), 'an empty LocalHostName falls back');
+  assert.equal(machineName({ platform: 'linux', localHostName: () => 'unused', osHostname: () => 'workbench-7.lan' }), 'workbench-7.lan', 'elsewhere os.hostname()');
+  const prose = planted(t, { file: 'runs on Mac and Linux\n', body: 'tested on a Mac\n\nPullboard-Item: #1' });
+  const machine = { ...STAND_IN, host: own };
+  assert.deepEqual(privacyProblems(prose.root, { range: prose.range, machine }), [], 'the network name\'s word Mac is not searched for');
+  const named = planted(t, { file: 'logs from workbench-7 show the stall\n' });
+  assert.deepEqual(privacyProblems(named.root, { range: named.range, machine }), ['notes.md:1: this host name'], 'the own name is still searched for');
+  assert.deepEqual(hostRule('Mac.phub.net.cable.rogers.com'), [], 'a common word gets no rule even when it is the only name');
+  assert.equal(hostRule('workbench-7.local').length, 1, 'a distinctive name keeps its rule');
 });
 
 test('only the declared sandbox container home is exempted while a real source home is still caught [C7]', (t) => {
