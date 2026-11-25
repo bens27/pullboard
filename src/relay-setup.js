@@ -50,7 +50,10 @@ import { Refused } from './refused.js';
 import { publishExcludedBoards } from './relay-excluded.js';
 import { plannedRelayBoard } from './relay-relink.js';
 import { refusalLine } from './relay-outbox.js';
-import { advanceTold, untoldOf } from './relay-refusals-told.js';
+import {
+  advanceTold,
+  untoldOf,
+} from './relay-refusals-told.js';
 
 /** Say which paired phone must approve a new board's link, and when the request ends in this computer's time. */
 function approvalWait(name, pending, devices) {

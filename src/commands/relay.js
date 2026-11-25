@@ -13,7 +13,10 @@ import {
 import * as relayOutput from '../relay-output.js';
 import { prepareBoardMembers } from '../relay-membership.js';
 import { githubKeys } from '../relay-handover.js';
-import { advanceTold, untoldOf } from '../relay-refusals-told.js';
+import {
+  advanceTold,
+  untoldOf,
+} from '../relay-refusals-told.js';
 import {
   relayJoin,
   relayPair,
