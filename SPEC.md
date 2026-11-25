@@ -163,14 +163,14 @@ Statuses: approved = decided · draft = proposed · pending = open question · f
 - I17 [approved, must] pullboard init and every registerProjectAndLink caller confirm the project is in the machine registry before saying registration is complete; relay on --all names every initialized board missing from the registry instead of skipping it silently. Measure: a board initialized but absent from projects.json is named by relay on --all; review 2026-12-07. | gate: review
 
 ## N · Next commands
-- N1 [approved, must] `pullboard decide`: the person's queue of everything waiting on them.
+- N1 [approved, must] The pullboard needs command lists what waits on the person and the next available steps. | gate: test/needs.test.js
 - N2 [approved, must] `pullboard next` claims my lane's next free item; --verify names work I did not build. | gate: test/e2e.test.js
 - N3 [wont, must] `pullboard context <id>`; pullboard show prints all of it.
-- N4 [approved, must] `pullboard ask add` stores the client's documents in ask/, hashed; rows can cite them.
-- N5 [approved, must] `pullboard spec approve` and `spec answer` record who changed a row's status, and when.
+- N4 [draft, must] `pullboard ask add` stores the client's documents in ask/, hashed; rows can cite them.
+- N5 [approved, must] `pullboard spec approve` and `spec answer` record who changed a row's status, and when. | gate: test/row-decisions.test.js, test/spec.test.js
 - N6 [approved, must] `pullboard prompt <role>` prints the role guide, overridable per repo. | gate: test/practice.test.js
-- N7 [approved, must] `pullboard plan` proposes lanes and items from the spec and the repo; --apply writes them.
-- N8 [approved, must] `pullboard run` starts configured agent commands per lane and role, under budgets and stops.
+- N7 [draft, must] `pullboard plan` proposes lanes and items from the spec and the repo; --apply writes them.
+- N8 [approved, must] The pullboard run command starts agents by tier and limits time, attempts, and items. | gate: test/e2e-runner.test.js
 - N9 [wont, aim] `pullboard report`; spec view, the view's product progress and the ledger cover it.
 - N10 [approved, aim] `pullboard tour` shows a reject and its rework with scripted agents in thirty seconds. | gate: test/e2e.test.js
 - N11 [approved, aim] A git-pullboard bin, so `git pullboard <command>` works.
